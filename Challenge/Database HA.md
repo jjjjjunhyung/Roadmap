@@ -1,4 +1,4 @@
-1. postgresql
+### 1. postgresql
 ```mermaid
 graph TD
     client[클라이언트 애플리케이션] --> lb[로드 밸런서]
@@ -68,7 +68,8 @@ graph TD
         end
     end
 ```
-2. redis
+
+###2. redis
 ```mermaid
 graph TD
     client[클라이언트 애플리케이션] --> lb[로드 밸런서]
@@ -130,7 +131,8 @@ graph TD
     proxy2 -.->|읽기| replica2_3
     proxy2 -.->|읽기| replica3_2
 ```
-3. elasticsearch
+
+###3. elasticsearch
 ```mermaid
 graph TD
     client[클라이언트 애플리케이션] --> lb[로드 밸런서]
@@ -201,7 +203,8 @@ graph TD
     coord2 -->|검색/인덱싱| data2
     coord2 -->|검색/인덱싱| data3
 ```
-4. mongodb
+
+###4. mongodb
 ```mermaid
 graph TD
     client[클라이언트] --> router[MongoDB 드라이버]
