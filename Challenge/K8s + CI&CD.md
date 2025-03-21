@@ -25,12 +25,12 @@
   - 프라이싱 옵션 연동: AWS 스팟 인스턴스 등을 활용하여, 동일한 성능을 보다 저렴한 비용으로 운영 가능.
 
 ### 3. Deployment Strategy
-###### challenge <br>
- Rolling update 사용시 안정적이고 높은 서비스 가용성을 유지할 수 있지만 배포시간이 길고 롤백이 어려움 <br>
-###### options <br>
+- **challenge** <br>
+  - Rolling update 사용시 안정적이고 높은 서비스 가용성을 유지할 수 있지만 배포시간이 길고 롤백이 어려움 <br>
+- **options** <br>
   - blue/green <br>
     - "Blue"(현재 서비스 중인 버전)와 "Green"(새 버전) 환경을 완전히 분리하여 운영 <br>
-  Green 환경에서 새로운 버전이 준비되면, 트래픽 라우팅을 Blue에서 Green으로 순간적으로 전환 <br>
+      - Green 환경에서 새로운 버전이 준비되면, 트래픽 라우팅을 Blue에서 Green으로 순간적으로 전환 <br>
     - pros
       - 롤백이 매우 간단(트래픽을 다시 Blue로 돌리면 됨)
       - 기존 환경과 별도로 새 버전을 테스트하므로 품질 보장에 유리
