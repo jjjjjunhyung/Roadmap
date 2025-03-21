@@ -1,8 +1,8 @@
-### 3. JVM GC
-###### challenge <br>
- JVM을 사용하는 프로젝트의 별도 설정을 해주지 않으면 사용하는 컴퓨팅 자원의 사이즈에 따라 GC 알고리즘이 채택 <br>
- Production 환경에서 관리자가 의도치 않게 어플리케이션이 원시적인 GC 알고리즘을 사용할 수 있음
-###### solution <br>
+# JVM GC
+- **challenge** <br>
+  - JVM을 사용하는 프로젝트의 별도 설정을 해주지 않으면 사용하는 컴퓨팅 자원의 사이즈에 따라 GC 알고리즘이 채택 <br>
+  - Production 환경에서 관리자가 의도치 않게 어플리케이션이 원시적인 GC 알고리즘을 사용할 수 있음
+- **option** <br>
   - G1 GC
     - 하드웨어가 발전함에 따라 큰 메모리(RAM) 공간을 가지고 있는 멀티 프로세서 시스템에서 빠른 처리 속도를 지원한다.
     - 최소 2 cpu 및 4GB memory 인 환경에서 권장되며 Java 9+부터는 default GC로 채택
@@ -16,11 +16,3 @@
   - Z GC
     - Java11부터 실험적으로 소개되어 Java15에 릴리즈된 확장성 있는 GC
     - GC 동안 애플리케이션의 작업이 멈추는 시간을 10ms 아래로 가져가는 것을 목표
-
-### 4. JPA N+1
-###### challenge <br>
-###### solution <br>
-
-### 5. JPA Cache
-###### challenge <br>
-###### solution <br>
