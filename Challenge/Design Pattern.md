@@ -223,15 +223,276 @@ classDiagram
  
 # 생성 패턴
 - **싱글톤 패턴 (Singleton Pattern)**
+  - 클래스의 인스턴스가 오직 하나만 생성되도록 보장하고, 이에 대한 전역적인 접근점을 제공하는 패턴
+  - 장점
+    - 전역적인 접근점을 통해 언제 어디서든 동일한 인스턴스에 접근 가능
+    - 하나의 인스턴스만 유지 리소스를 절약할 수 있음
+    - 데이터베이스 연결, 로거, 설정 관리자 등 공유 리소스 관리에 효과적
+``` mermaid
+classDiagram
+    class Singleton {
+        -static instance: Singleton
+        -Singleton()
+        +static getInstance() Singleton
+        +businessLogic()
+    }
+    
+    note for Singleton "생성자는 private\n인스턴스는 static 메서드로만 접근 가능"
+```
 - **팩토리 메서드 패턴 (Factory Method Pattern)**
+  - 객체 생성 로직을 서브클래스로 분리하여 객체 생성을 캡슐화하는 패턴
+  - 장점
+    - 객체 생성 코드와 비즈니스 로직 분리로 결합도 감소
+    - 확장에 용이 (새로운 제품 클래스를 추가하기 쉬움)
+    - 개방-폐쇄 원칙(OCP) 준수
+    - 코드 재사용성 증가
+``` mermaid
+classDiagram
+    class Creator {
+        <<abstract>>
+        +factoryMethod() Product
+        +someOperation()
+    }
+    
+    class ConcreteCreatorA {
+        +factoryMethod() Product
+    }
+    
+    class ConcreteCreatorB {
+        +factoryMethod() Product
+    }
+    
+    class Product {
+        <<interface>>
+        +operation()
+    }
+    
+    class ConcreteProductA {
+        +operation()
+    }
+    
+    class ConcreteProductB {
+        +operation()
+    }
+    
+    Creator <|-- ConcreteCreatorA
+    Creator <|-- ConcreteCreatorB
+    Product <|.. ConcreteProductA
+    Product <|.. ConcreteProductB
+    ConcreteCreatorA ..> ConcreteProductA : creates
+    ConcreteCreatorB ..> ConcreteProductB : creates
+```
 - **추상 팩토리 패턴 (Abstract Factory Pattern)**
+  - 관련성 있는 객체들의 집합을 생성하기 위한 인터페이스를 제공하는 패턴
+  - 장점
+    - 제품군 간의 일관성 보장
+    - 구체적인 클래스에 대한 의존성 감소
+    - 제품군 교체가 용이 (예: 다른 운영체제나 테마로 전환)
+    - 새로운 제품 변형 추가가 쉬움
+``` mermaid
+classDiagram
+    class AbstractFactory {
+        <<interface>>
+        +createProductA() AbstractProductA
+        +createProductB() AbstractProductB
+    }
+    
+    class ConcreteFactory1 {
+        +createProductA() AbstractProductA
+        +createProductB() AbstractProductB
+    }
+    
+    class ConcreteFactory2 {
+        +createProductA() AbstractProductA
+        +createProductB() AbstractProductB
+    }
+    
+    class AbstractProductA {
+        <<interface>>
+        +operationA()
+    }
+    
+    class AbstractProductB {
+        <<interface>>
+        +operationB()
+    }
+    
+    class ProductA1 {
+        +operationA()
+    }
+    
+    class ProductA2 {
+        +operationA()
+    }
+    
+    class ProductB1 {
+        +operationB()
+    }
+    
+    class ProductB2 {
+        +operationB()
+    }
+    
+    AbstractFactory <|.. ConcreteFactory1
+    AbstractFactory <|.. ConcreteFactory2
+    AbstractProductA <|.. ProductA1
+    AbstractProductA <|.. ProductA2
+    AbstractProductB <|.. ProductB1
+    AbstractProductB <|.. ProductB2
+    ConcreteFactory1 ..> ProductA1 : creates
+    ConcreteFactory1 ..> ProductB1 : creates
+    ConcreteFactory2 ..> ProductA2 : creates
+    ConcreteFactory2 ..> ProductB2 : creates
+```
 - **빌더 패턴 (Builder Pattern)**
+  - 복잡한 객체의 생성 과정을 단계별로 분리하는 패턴
+  - 장점
+    - 객체 생성 과정의 가독성 향상
+    - 매개변수가 많은 생성자 문제 해결 (점층적 생성자 패턴의 대안)
+    - 객체 생성 과정 단계적 제어 가능
+    - 불변 객체 생성에 적합
+    - 동일한 과정으로 다양한 객체 생성 가능
+``` mermaid
+classDiagram
+    class Director {
+        -builder: Builder
+        +setBuilder(Builder)
+        +constructProduct()
+    }
+    
+    class Builder {
+        <<interface>>
+        +buildPartA()
+        +buildPartB()
+        +buildPartC()
+        +getResult() Product
+    }
+    
+    class ConcreteBuilder {
+        -product: Product
+        +buildPartA()
+        +buildPartB()
+        +buildPartC()
+        +getResult() Product
+    }
+    
+    class Product {
+        -partA
+        -partB
+        -partC
+    }
+    
+    Director o--> Builder
+    Builder <|.. ConcreteBuilder
+    ConcreteBuilder ..> Product : creates
+```
 - 그 외
   - 프로토타입 패턴 (Prototype Pattern)
 # 구조 패턴
 - **어댑터 패턴 (Adapter Pattern)**
+  - 호환되지 않는 인터페이스를 가진 객체들이 협업할 수 있도록 하는 패턴
+  - 장점
+    - 기존 코드 재사용성 증가
+    - 레거시 코드와 신규 코드 간 통합 용이
+    - 코드 수정 없이 기존 클래스 활용 가능
+    - 인터페이스 호환성 문제 해결
+``` mermaid
+classDiagram
+    class Client {
+        +doWork()
+    }
+    
+    class Target {
+        <<interface>>
+        +request()
+    }
+    
+    class Adapter {
+        -adaptee: Adaptee
+        +request()
+    }
+    
+    class Adaptee {
+        +specificRequest()
+    }
+    
+    Client --> Target
+    Target <|.. Adapter
+    Adapter o--> Adaptee
+    
+    note for Adapter "request() 내부에서\nadaptee.specificRequest()를 호출"
+```
 - **퍼사드 패턴 (Facade Pattern)**
+  - 복잡한 서브시스템에 대한 간편한 인터페이스를 제공하는 패턴
+  - 장점
+    - 복잡한 서브시스템 사용 단순화
+    - 서브시스템과 클라이언트 간의 결합도 감소
+    - 서브시스템 구현 변경 시 클라이언트 영향 최소화
+    - 계층화된 구조 설계에 적합
+``` mermaid
+classDiagram
+    class Client {
+    }
+    
+    class Facade {
+        -subsystem1: Subsystem1
+        -subsystem2: Subsystem2
+        -subsystem3: Subsystem3
+        +operation()
+    }
+    
+    class Subsystem1 {
+        +operation1()
+    }
+    
+    class Subsystem2 {
+        +operation2()
+    }
+    
+    class Subsystem3 {
+        +operation3()
+    }
+    
+    Client --> Facade
+    Facade o--> Subsystem1
+    Facade o--> Subsystem2
+    Facade o--> Subsystem3
+    
+    note for Facade "복잡한 하위 시스템들의 작업을\n단순한 인터페이스로 통합"
+```
 - **프록시 패턴 (Proxy Pattern)**
+  - 다른 객체에 대한 대리자 역할을 하는 객체를 제공하는 패턴
+  - 장점
+    - 원본 객체에 대한 접근 제어 가능
+    - 원본 객체 생성 비용이 큰 경우 지연 초기화로 성능 향상
+    - 원본 객체 접근 전후 로직 추가 가능 (로깅, 캐싱, 권한 검사 등)
+    - 원본 객체를 수정하지 않고 기능 확장 가능
+``` mermaid
+classDiagram
+    class Client {
+    }
+    
+    class Subject {
+        <<interface>>
+        +request()
+    }
+    
+    class RealSubject {
+        +request()
+    }
+    
+    class Proxy {
+        -realSubject: RealSubject
+        +request()
+    }
+    
+    Client --> Subject
+    Subject <|.. RealSubject
+    Subject <|.. Proxy
+    Proxy o--> RealSubject
+    
+    note for Proxy "실제 객체에 대한 접근을 제어\n필요 시에만 실제 객체 생성/호출"
+```
 - 그 외
   - 브릿지 패턴(Bridge Pattern), 컴퍼지트 패턴(Composite Pattern), 데코레이터 패턴(Decorator Pattern), 플라이웨이트 패턴(Flyweight Pattern)
 # 행동 패턴
