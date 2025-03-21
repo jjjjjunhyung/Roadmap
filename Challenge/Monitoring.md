@@ -1,4 +1,4 @@
-### ELK Stack <br>
+# ELK Stack <br>
   - **solution** <br>
     - Elasticsearch: 분산형 검색 및 분석 엔진으로 로그 데이터를 저장하고 검색 <br>
     - Logstash: 다양한 소스에서 데이터를 수집, 변환 및 전송하는 데이터 파이프라인 <br>
@@ -12,7 +12,7 @@
     - 초기 설정 및 구성이 복잡하고 러닝 커브가 가파름 <br>
     - 대규모 데이터 처리 시 성능 튜닝이 필요할 수 있음
 
-### PLG Stack <br>
+# PLG Stack <br>
   - **solution** <br>
     - Prometheus: 메트릭 기반 모니터링 시스템으로 시계열 데이터 수집 및 알림 기능 제공 <br>
     - Loki: 로그 집계 시스템으로 Prometheus에서 영감을 받아 설계된 경량 로그 관리 솔루션 <br>
