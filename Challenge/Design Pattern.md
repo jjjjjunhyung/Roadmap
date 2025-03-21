@@ -237,7 +237,7 @@ classDiagram
         +businessLogic()
     }
     
-    note for Singleton "생성자는 private\n인스턴스는 static 메서드로만 접근 가능"
+    note for Singleton "생성자는 private<br> 인스턴스는 static 메서드로만 접근 가능"
 ```
 - **팩토리 메서드 패턴 (Factory Method Pattern)**
   - 객체 생성 로직을 서브클래스로 분리하여 객체 생성을 캡슐화하는 패턴
@@ -420,7 +420,7 @@ classDiagram
     Target <|.. Adapter
     Adapter o--> Adaptee
     
-    note for Adapter "request() 내부에서\nadaptee.specificRequest()를 호출"
+    note for Adapter "request() 내부에서<br>adaptee.specificRequest()를 호출"
 ```
 - **퍼사드 패턴 (Facade Pattern)**
   - 복잡한 서브시스템에 대한 간편한 인터페이스를 제공하는 패턴
@@ -458,7 +458,7 @@ classDiagram
     Facade o--> Subsystem2
     Facade o--> Subsystem3
     
-    note for Facade "복잡한 하위 시스템들의 작업을\n단순한 인터페이스로 통합"
+    note for Facade "복잡한 하위 시스템들의 작업을<br>단순한 인터페이스로 통합"
 ```
 - **프록시 패턴 (Proxy Pattern)**
   - 다른 객체에 대한 대리자 역할을 하는 객체를 제공하는 패턴
@@ -491,7 +491,7 @@ classDiagram
     Subject <|.. Proxy
     Proxy o--> RealSubject
     
-    note for Proxy "실제 객체에 대한 접근을 제어\n필요 시에만 실제 객체 생성/호출"
+    note for Proxy "실제 객체에 대한 접근을 제어<br>필요 시에만 실제 객체 생성/호출"
 ```
 - 그 외
   - 브릿지 패턴(Bridge Pattern), 컴퍼지트 패턴(Composite Pattern), 데코레이터 패턴(Decorator Pattern), 플라이웨이트 패턴(Flyweight Pattern)
