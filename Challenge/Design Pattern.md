@@ -23,4 +23,9 @@
  - 그 외
    - 프로토타입 패턴 (Prototype Pattern)
 # 구조 패턴
+  - **어댑터 패턴 (Adapter Pattern)**
+  - **퍼사드 패턴 (Facade Pattern)**
+  - **프록시 패턴 (Proxy Pattern)**
+  - 그 외
+    - 브릿지 패턴(Bridge Pattern), 컴퍼지트 패턴(Composite Pattern), 데코레이터 패턴(Decorator Pattern), 플라이웨이트 패턴(Flyweight Pattern)
 # 행동 패턴
