@@ -16,16 +16,17 @@
   - 구체적인 구현이 아닌 추상화(인터페이스나 추상 클래스)에 의존함으로써, 시스템 내의 결합도를 낮추고 유연성을 높일 수 있음. 이는 변경에 강한 구조를 만들고, 테스트 용이성도 개선함.
  
 # 생성 패턴
- - **싱글톤 패턴 (Singleton Pattern)**
- - **팩토리 메서드 패턴 (Factory Method Pattern)**
- - **추상 팩토리 패턴 (Abstract Factory Pattern)**
- - **빌더 패턴 (Builder Pattern)**
- - 그 외
-   - 프로토타입 패턴 (Prototype Pattern)
+- **싱글톤 패턴 (Singleton Pattern)**
+- **팩토리 메서드 패턴 (Factory Method Pattern)**
+- **추상 팩토리 패턴 (Abstract Factory Pattern)**
+- **빌더 패턴 (Builder Pattern)**
+- 그 외
+  - 프로토타입 패턴 (Prototype Pattern)
 # 구조 패턴
-  - **어댑터 패턴 (Adapter Pattern)**
-  - **퍼사드 패턴 (Facade Pattern)**
-  - **프록시 패턴 (Proxy Pattern)**
-  - 그 외
-    - 브릿지 패턴(Bridge Pattern), 컴퍼지트 패턴(Composite Pattern), 데코레이터 패턴(Decorator Pattern), 플라이웨이트 패턴(Flyweight Pattern)
+- **어댑터 패턴 (Adapter Pattern)**
+- **퍼사드 패턴 (Facade Pattern)**
+- **프록시 패턴 (Proxy Pattern)**
+- 그 외
+  - 브릿지 패턴(Bridge Pattern), 컴퍼지트 패턴(Composite Pattern), 데코레이터 패턴(Decorator Pattern), 플라이웨이트 패턴(Flyweight Pattern)
 # 행동 패턴
+- 스트레티지 패턴(Strategy Pattern), 옵저버 패턴(Observer Pattern), 스테이트 패턴(State Pattern), 비지터 패턴(Visitor Pattern), 커맨드 패턴(Command Pattern), 인터프리터 패턴(Interpreter Pattern), 이터레이터 패턴(Iterator Pattern), 미디에이터 패턴(Mediator Pattern), 메멘토 패턴(Memento Pattern), 책임 연쇄 패턴(Chain of Responsibility Pattern)
