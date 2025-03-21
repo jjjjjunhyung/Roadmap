@@ -1,4 +1,4 @@
-### 1. ci/cd
+### CI/CD
 - **challenge** <br>
   - Multi region, multi project로 구성되어 있는 eks 서비스들을 수동으로 sync 하기 어려움 <br>
   - 배포 과정을 일관화된 방법으로 체계적으로 관리하고 자동화할 필요성 <br>
@@ -12,7 +12,7 @@
   - k8s 환경에서만 ArgoCD를 사용할 수 있음
   - git 서비스의 장애를 고려해야 함
 
-### 2. Auto Scaling
+### Auto Scaling
 - **challenge** <br>
   - 서비스 부하가 불규칙한 상황에서 고정된 개수의 instance를 운영하는 것은 비효율적인 상황 <br>
   - 부하가 집중되는 상황에서는 인스턴스 개수를 늘리고, 그 외의 상황에서는 최소화하는 방식으로 유연하게 운영할 필요성 <br>
@@ -24,7 +24,7 @@
   - 프로비저닝 효율성: 필요 리소스에 정확히 맞춰 노드를 생성하므로, 오버프로비저닝을 줄이고 비용을 절감할 수 있음
   - 프라이싱 옵션 연동: AWS 스팟 인스턴스 등을 활용하여, 동일한 성능을 보다 저렴한 비용으로 운영 가능.
 
-### 3. Deployment Strategy
+### Deployment Strategy
 - **challenge** <br>
   - Rolling update 사용시 안정적이고 높은 서비스 가용성을 유지할 수 있지만 배포시간이 길고 롤백이 어려움 <br>
 - **options** <br>
