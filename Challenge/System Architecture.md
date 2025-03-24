@@ -429,7 +429,7 @@ graph TB
     F -->|메시지 전달| G[소비자 서비스]
 ```
 
-# 리액티브 프로그래밍 (Reactive Programming)
+# 리액티브 시스템 아키텍처 (Reactive System Architecture)
 - **challenge** <br>
   - 데이터 흐름(Data Stream)과 변화 전파(Propagation of Change)를 중심으로 하는 비동기 프로그래밍 패러다임. 이벤트, 메시지, 데이터 스트림 등 변화하는 데이터에 반응하여 시스템이 동작
   - **반응성 (Responsiveness)**: 시스템이 즉시 응답
@@ -448,32 +448,13 @@ graph TB
   - 메모리 사용량이 증가할 수 있음
   - 코드의 복잡도가 증가할 수 있음
 ``` mermaid
-graph LR
-    subgraph "Producer"
-        P[Fast Producer]
-    end
-
-    subgraph "Back Pressure"
-        BP[Back Pressure Mechanism]
-    end
-
-    subgraph "Consumer"
-        C[Slow Consumer]
-    end
-
-    P -->|Fast Data Stream| BP
-    BP -->|Controlled Flow| C
-    
-    subgraph "Reactive Components"
-        direction TB
-        RC1[Reactive Component 1]
-        RC2[Reactive Component 2]
-        RC3[Reactive Component 3]
-    end
-
-    BP -->|Back Pressure Signal| P
-    RC1 -->|Event Stream| RC2
-    RC2 -->|Event Stream| RC3
+flowchart LR
+    A((Producer)) -->|Event Stream| B[Buffer/Flow Controller]
+    B -->|Event Stream| C((Consumer1))
+    B -->|Event Stream| D((Consumer2))
+    C -->|Back Pressure Signal| B
+    D -->|Back Pressure Signal| B
+    B -->|Demand Control| A
 ``` 
 
 # 사가 패턴 (Saga Pattern)
