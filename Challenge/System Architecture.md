@@ -28,3 +28,52 @@ graph TB
     
     Client[클라이언트] --> UI
 ```
+
+# 마이크로서비스 아키텍처 (Microservices Architecture)
+- **challenge** <br>
+  - 애플리케이션을 작고 독립적인 서비스로 구성되며, 각 서비스는 자체 프로세스에서 실행되고 가벼운 통신 메커니즘(주로 HTTP API)을 통해 통신
+- **pros** <br>
+  - 서비스별 독립적 개발, 배포, 확장 가능
+  - 다양한 기술 스택 사용 가능
+  - 결함 격리 (한 서비스의 장애가 전체에 영향을 미치지 않음)
+  - 대규모 조직에서 팀별 분업이 용이함
+- **cons** <br>
+  - 분산 시스템의 복잡성 증가
+  - 서비스 간 통신 오버헤드
+  - 트랜잭션 관리와 데이터 일관성 유지가 어려움
+  - 테스트와 디버깅이 복잡함
+  - 운영 오버헤드 증가
+``` mermaid
+graph TB
+    Client[클라이언트] --> Gateway[API Gateway]
+    
+    Gateway --> Auth[인증 서비스]
+    Gateway --> Users[사용자 서비스]
+    Gateway --> Products[상품 서비스]
+    Gateway --> Orders[주문 서비스]
+    Gateway --> Payment[결제 서비스]
+    
+    subgraph "마이크로서비스"
+        Auth
+        Users
+        Products
+        Orders
+        Payment
+    end
+    
+    Users --> UserDB[(사용자 DB)]
+    Products --> ProductDB[(상품 DB)]
+    Orders --> OrderDB[(주문 DB)]
+    Payment --> PaymentDB[(결제 DB)]
+    
+    Orders -.-> Products
+    Orders -.-> Payment
+    Payment -.-> Users
+    
+    MessageBus[메시지 버스/이벤트 브로커]
+    
+    Orders --이벤트 발행--> MessageBus
+    Payment --이벤트 발행--> MessageBus
+    Products --이벤트 구독--> MessageBus
+    Users --이벤트 구독--> MessageBus
+```
