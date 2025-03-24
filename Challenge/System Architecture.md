@@ -353,3 +353,54 @@ graph TD
         end
     end
 ```
+
+# 사가 패턴 (Saga Pattern)
+- **challenge** <br>
+  - 분산 트랜잭션 관리를 위한 패턴으로, 각 마이크로서비스의 로컬 트랜잭션을 순차적으로 실행하고 실패 시 보상 트랜잭션을 통해 일관성을 유지
+- **pros** <br>
+  - 마이크로서비스 환경에서 데이터 일관성 보장
+  - 장애 시 복구 메커니즘 제공
+  - 높은 확장성과 유연성
+- **cons** <br>
+  - 구현 복잡성 증가
+  - 최종 일관성만 보장(즉시 일관성 X)
+  - 디버깅과 테스트의 어려움
+``` mermaid
+sequenceDiagram
+    participant Client
+    participant OrderService
+    participant PaymentService
+    participant InventoryService
+    participant ShippingService
+    participant SagaOrchestrator
+    
+    Client->>OrderService: 주문 생성 요청
+    OrderService->>SagaOrchestrator: 주문 사가 시작
+    
+    Note over SagaOrchestrator: 트랜잭션 시작
+    
+    SagaOrchestrator->>OrderService: 주문 생성
+    OrderService-->>SagaOrchestrator: 주문 생성 완료
+    
+    SagaOrchestrator->>PaymentService: 결제 처리
+    PaymentService-->>SagaOrchestrator: 결제 성공
+    
+    SagaOrchestrator->>InventoryService: 재고 감소
+    
+    alt 재고 부족
+        InventoryService-->>SagaOrchestrator: 재고 부족 오류
+        SagaOrchestrator->>PaymentService: 결제 취소 (보상 트랜잭션)
+        PaymentService-->>SagaOrchestrator: 결제 취소 완료
+        SagaOrchestrator->>OrderService: 주문 취소 (보상 트랜잭션)
+        OrderService-->>SagaOrchestrator: 주문 취소 완료
+        SagaOrchestrator-->>Client: 주문 실패 응답
+    else 재고 충분
+        InventoryService-->>SagaOrchestrator: 재고 감소 성공
+        SagaOrchestrator->>ShippingService: 배송 정보 생성
+        ShippingService-->>SagaOrchestrator: 배송 정보 생성 성공
+        
+        Note over SagaOrchestrator: 트랜잭션 완료
+        
+        SagaOrchestrator-->>Client: 주문 성공 응답
+    end
+```
