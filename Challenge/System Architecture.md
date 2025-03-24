@@ -404,3 +404,61 @@ sequenceDiagram
         SagaOrchestrator-->>Client: 주문 성공 응답
     end
 ```
+
+# 2단계 커밋 패턴 (Two-Phase Commit Pattern)
+- **challenge** <br>
+  - 분산 시스템에서 원자성을 보장하기 위한 트랜잭션 프로토콜로, 준비 단계와 커밋 단계로 구성
+- **pros** <br>
+  - 완전한 원자성 보장
+  - 강한 일관성 제공
+  - 분산 환경에서의 트랜잭션 관리
+- **cons** <br>
+  - 코디네이터가 단일 장애점(SPOF)
+  - 블로킹 프로토콜로 성능 저하
+  - 장애 복구 복잡성
+``` mermaid
+sequenceDiagram
+    participant Client
+    participant Coordinator
+    participant DB1 as Database 1
+    participant DB2 as Database 2
+    participant DB3 as Database 3
+    
+    Client->>Coordinator: 트랜잭션 요청
+    
+    Note over Coordinator: Phase 1: Prepare
+    
+    Coordinator->>DB1: Prepare (트랜잭션 데이터)
+    Coordinator->>DB2: Prepare (트랜잭션 데이터)
+    Coordinator->>DB3: Prepare (트랜잭션 데이터)
+    
+    DB1-->>Coordinator: Ready
+    DB2-->>Coordinator: Ready
+    DB3-->>Coordinator: Ready
+    
+    Note over Coordinator: Phase 2: Commit
+    
+    alt All resources ready
+        Coordinator->>DB1: Commit
+        Coordinator->>DB2: Commit
+        Coordinator->>DB3: Commit
+        
+        DB1-->>Coordinator: Committed
+        DB2-->>Coordinator: Committed
+        DB3-->>Coordinator: Committed
+        
+        Coordinator-->>Client: 트랜잭션 성공
+    else Any resource not ready
+        Coordinator->>DB1: Abort
+        Coordinator->>DB2: Abort
+        Coordinator->>DB3: Abort
+        
+        DB1-->>Coordinator: Aborted
+        DB2-->>Coordinator: Aborted
+        DB3-->>Coordinator: Aborted
+        
+        Coordinator-->>Client: 트랜잭션 실패
+    end
+    
+    Note over Coordinator, DB3: 모든 참여자는 트랜잭션 로그 유지
+```
