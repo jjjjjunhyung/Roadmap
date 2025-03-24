@@ -429,6 +429,53 @@ graph TB
     F -->|메시지 전달| G[소비자 서비스]
 ```
 
+# 리액티브 프로그래밍 (Reactive Programming)
+- **challenge** <br>
+  - 데이터 흐름(Data Stream)과 변화 전파(Propagation of Change)를 중심으로 하는 비동기 프로그래밍 패러다임. 이벤트, 메시지, 데이터 스트림 등 변화하는 데이터에 반응하여 시스템이 동작
+  - **반응성 (Responsiveness)**: 시스템이 즉시 응답
+  - **탄력성 (Resilience)**: 장애 발생 시에도 시스템이 계속 동작
+  - **회복성 (Elasticity)**: 부하에 따라 자동으로 확장/축소
+  - **메시지 기반 (Message-Driven)**: 느슨한 결합을 위한 비동기 메시지 전달
+- **pros** <br>
+  - 실시간 데이터 처리에 적합
+  - 높은 확장성과 성능
+  - 비동기 작업 처리의 효율성
+  - 이벤트 기반 아키텍처로 인한 유연성
+  - 백프레셔(Backpressure) 지원으로 리소스 관리 용이
+- **cons** <br>
+  - 학습 곡선이 가파름
+  - 디버깅이 복잡할 수 있음
+  - 메모리 사용량이 증가할 수 있음
+  - 코드의 복잡도가 증가할 수 있음
+``` mermaid
+graph LR
+    subgraph "Producer"
+        P[Fast Producer]
+    end
+
+    subgraph "Back Pressure"
+        BP[Back Pressure Mechanism]
+    end
+
+    subgraph "Consumer"
+        C[Slow Consumer]
+    end
+
+    P -->|Fast Data Stream| BP
+    BP -->|Controlled Flow| C
+    
+    subgraph "Reactive Components"
+        direction TB
+        RC1[Reactive Component 1]
+        RC2[Reactive Component 2]
+        RC3[Reactive Component 3]
+    end
+
+    BP -->|Back Pressure Signal| P
+    RC1 -->|Event Stream| RC2
+    RC2 -->|Event Stream| RC3
+``` 
+
 # 사가 패턴 (Saga Pattern)
 - **challenge** <br>
   - 분산 트랜잭션 관리를 위한 패턴으로, 각 마이크로서비스의 로컬 트랜잭션을 순차적으로 실행하고 실패 시 보상 트랜잭션을 통해 일관성을 유지
