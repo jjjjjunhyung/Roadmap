@@ -183,31 +183,24 @@ graph TB
   - 두 모델 간 데이터 동기화 필요
   - 작은 애플리케이션에서는 오버엔지니어링 우려
 ``` mermaid
-graph TB
-    Client[클라이언트] --> API[API 게이트웨이]
+graph TD
+    Client[클라이언트] --> CmdAPI[명령 API]
+    Client --> QryAPI[쿼리 API]
     
-    API --> CommandAPI[명령 API]
-    API --> QueryAPI[쿼리 API]
-    
-    subgraph "Command Side"
-        CommandAPI --> CommandHandler[명령 핸들러]
-        CommandHandler --> DomainModel[도메인 모델]
-        DomainModel --> EventPublisher[이벤트 발행자]
-        EventPublisher --> CommandRepository[명령 저장소]
+    subgraph "명령 측 (Write Side)"
+        CmdAPI --> CmdHandlers[명령 핸들러]
+        CmdHandlers --> Domain[도메인 모델]
+        Domain --> CmdRepo[명령 리포지토리]
+        CmdRepo --> WriteDB[(Write DB)]
     end
     
-    subgraph "Query Side"
-        QueryAPI --> QueryHandler[쿼리 핸들러]
-        QueryHandler --> ReadModel[읽기 모델]
-        ReadModel --> QueryRepository[쿼리 저장소]
-        
-        EventSubscriber[이벤트 구독자]
-        EventSubscriber --> ReadModel
+    subgraph "쿼리 측 (Read Side)"
+        QryAPI --> QryHandlers[쿼리 핸들러]
+        QryHandlers --> ReadModels[읽기 모델]
+        ReadModels --> QryRepo[쿼리 리포지토리]
+        QryRepo --> ReadDB[(Read DB)]
     end
     
-    EventPublisher --> EventBus[이벤트 버스]
-    EventBus --> EventSubscriber
-    
-    CommandRepository --> WriteDB[(쓰기 DB)]
-    QueryRepository --> ReadDB[(읽기 DB)]
+    WriteDB -- "이벤트/동기화" --> SyncMech[동기화 메커니즘]
+    SyncMech --> ReadDB
 ```
