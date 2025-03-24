@@ -110,3 +110,61 @@ graph TB
     I --> ES[외부 서비스]
     I --> FileSystem[파일 시스템]
 ```
+
+# 헥사고날 아키텍처 (Hexagonal Architecture / Ports and Adapters)
+- **challenge** <br>
+  - 비즈니스 로직을 외부 요소(UI, 데이터베이스 등)로부터 격리하여 애플리케이션의 핵심을 보호하는 아키텍처.
+- **pros** <br>
+  - 비즈니스 로직의 독립성 보장
+  - 외부 시스템 변경에 대한 유연성
+  - 테스트 용이성 (목(mock) 어댑터 사용)
+  - 기술적 부채 최소화
+- **cons** <br>
+  - 초기 설계 복잡도 증가
+  - 소규모 프로젝트에서는 과도할 수 있음
+  - 인터페이스 설계에 대한 높은 이해도 필요
+  - 추가적인 추상화 계층으로 인한 오버헤드
+``` mermaid
+graph TB
+    subgraph "Hexagonal Architecture"
+        subgraph "Domain Core"
+            BL[비즈니스 로직]
+        end
+        
+        subgraph "Primary Adapters (Driving)"
+            RestAPI[REST API 컨트롤러]
+            CLI[CLI 인터페이스]
+            Events[이벤트 리스너]
+        end
+        
+        subgraph "Secondary Adapters (Driven)"
+            DB_Adapter[DB 어댑터]
+            ExternalAPI[외부 API 어댑터]
+            MessageQueue[메시지 큐 어댑터]
+        end
+        
+        subgraph "Ports"
+            In_Port[입력 포트<br/>인터페이스]
+            Out_Port[출력 포트<br/>인터페이스]
+        end
+        
+        RestAPI --> In_Port
+        CLI --> In_Port
+        Events --> In_Port
+        
+        In_Port --> BL
+        BL --> Out_Port
+        
+        Out_Port --> DB_Adapter
+        Out_Port --> ExternalAPI
+        Out_Port --> MessageQueue
+    end
+    
+    User[사용자] --> RestAPI
+    Admin[관리자] --> CLI
+    ExternalSys[외부 시스템] --> Events
+    
+    DB_Adapter --> Database[(데이터베이스)]
+    ExternalAPI --> ExtServices[외부 서비스]
+    MessageQueue --> Queue[메시지 큐]
+```
