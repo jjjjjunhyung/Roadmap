@@ -12,6 +12,52 @@
   - 소규모 응용 프로그램에는 과도한 솔루션일 수 있음
   - 많은 기본 기능에 추가 구성이 필요함
   - 무거운 리소스 소비 (JVM 기반)
+```mermaid
+flowchart LR
+    subgraph "Producers"
+        P1["Producer 1"]
+        P2["Producer 2"]
+    end
+    
+    P1 -->|메시지 발행| T1
+    P2 -->|메시지 발행| T2
+    
+    subgraph "Kafka 브로커 클러스터"
+        subgraph "토픽과 파티션"
+            T1["Topic 1"]
+            T1P0["Partition 0"]
+            T1P1["Partition 1"]
+            T1 --- T1P0
+            T1 --- T1P1
+            
+            T2["Topic 2"]
+            T2P0["Partition 0"]
+            T2P1["Partition 1"]
+            T2 --- T2P0
+            T2 --- T2P1
+        end
+        
+        ZK["ZooKeeper<br>(메타데이터 관리)"]
+    end
+    
+    T1P0 -->|메시지 소비| CG1
+    T1P1 -->|메시지 소비| CG1
+    T2P0 -->|메시지 소비| CG2
+    T2P1 -->|메시지 소비| CG2
+    
+    subgraph "Consumers"
+        CG1["Consumer Group 1"]
+        CG2["Consumer Group 2"]
+        
+        CG1C1["Consumer 1-1"]
+        CG1C2["Consumer 1-2"]
+        CG2C1["Consumer 2-1"]
+        
+        CG1 --- CG1C1
+        CG1 --- CG1C2
+        CG2 --- CG2C1
+    end
+```
 
 # RabbitMQ
 - **challenge** <br>
