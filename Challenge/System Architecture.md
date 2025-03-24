@@ -290,3 +290,52 @@ graph TD
         ESB <--> Registry
     end
 ```
+
+# 클린 아키텍처 (Clean Architecture)
+- **challenge** <br>
+  - 시스템을 계층으로 나누고, 의존성 규칙을 통해 내부 계층이 외부 계층에 의존하지 않도록 설계하는 방식. 비즈니스 로직을 중심에 두고 인프라스트럭처, 프레임워크, UI 등의 세부사항으로부터 분리
+- **pros** <br>
+  - 비즈니스 로직이 외부 의존성으로부터 분리되어 테스트 용이
+  - 비즈니스 로직 변경 시 외부 계층에 영향 없음
+  - 특정 프레임워크에 종속되지 않음
+  - 외부 계층 변경이 쉬움 (DB 변경, UI 변경 등)
+- **cons** <br>
+  - 아키텍처 설계에 많은 노력 필요
+  - 간단한 애플리케이션에서는 과도할 수 있음
+  - 새로운 개발자들의 진입 장벽 높음
+  - 추상화, 인터페이스 등으로 코드량 증가
+``` mermaid
+graph TD
+    subgraph "클린 아키텍처"
+        subgraph "Entities"
+            Entities[비즈니스 객체와 규칙]
+        end
+        
+        subgraph "Use Cases"
+            UseCases[애플리케이션 특화 비즈니스 규칙]
+            UseCases --> Entities
+        end
+        
+        subgraph "Interface Adapters"
+            Controllers[컨트롤러]
+            Presenters[프레젠터]
+            Gateways[게이트웨이]
+            
+            Controllers --> UseCases
+            Presenters --> UseCases
+            Gateways --> UseCases
+        end
+        
+        subgraph "Frameworks & Drivers"
+            UI[웹, 모바일 UI]
+            DB[데이터베이스]
+            ExternalInterfaces[외부 인터페이스]
+            Devices[기기]
+            
+            UI --> Controllers
+            DB <--> Gateways
+            ExternalInterfaces <--> Controllers
+            Devices <--> Controllers
+        end
+    end
+```
