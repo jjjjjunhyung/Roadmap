@@ -168,3 +168,46 @@ graph TB
     ExternalAPI --> ExtServices[외부 서비스]
     MessageQueue --> Queue[메시지 큐]
 ```
+
+# CQRS (Command Query Responsibility Segregation)
+- **challenge** <br>
+  - 데이터를 변경하는 명령(Command)과 데이터를 조회하는 쿼리(Query)를 분리하는 패턴으로, 각각 다른 모델과 다른 데이터 저장소를 사용할 수 있음.
+- **pros** <br>
+  - 읽기와 쓰기 작업에 대한 최적화 가능
+  - 확장성 향상 (읽기/쓰기 독립적 확장)
+  - 복잡한 도메인 모델 단순화
+  - 이벤트 소싱과 결합 시 시너지 효과
+- **cons** <br>
+  - 구현 복잡도 증가
+  - 데이터 일관성 유지 관리 필요
+  - 두 모델 간 데이터 동기화 필요
+  - 작은 애플리케이션에서는 오버엔지니어링 우려
+``` mermaid
+graph TB
+    Client[클라이언트] --> API[API 게이트웨이]
+    
+    API --> CommandAPI[명령 API]
+    API --> QueryAPI[쿼리 API]
+    
+    subgraph "Command Side"
+        CommandAPI --> CommandHandler[명령 핸들러]
+        CommandHandler --> DomainModel[도메인 모델]
+        DomainModel --> EventPublisher[이벤트 발행자]
+        EventPublisher --> CommandRepository[명령 저장소]
+    end
+    
+    subgraph "Query Side"
+        QueryAPI --> QueryHandler[쿼리 핸들러]
+        QueryHandler --> ReadModel[읽기 모델]
+        ReadModel --> QueryRepository[쿼리 저장소]
+        
+        EventSubscriber[이벤트 구독자]
+        EventSubscriber --> ReadModel
+    end
+    
+    EventPublisher --> EventBus[이벤트 버스]
+    EventBus --> EventSubscriber
+    
+    CommandRepository --> WriteDB[(쓰기 DB)]
+    QueryRepository --> ReadDB[(읽기 DB)]
+```
