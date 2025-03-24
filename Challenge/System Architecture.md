@@ -77,3 +77,36 @@ graph TB
     Products --이벤트 구독--> MessageBus
     Users --이벤트 구독--> MessageBus
 ```
+
+# 레이어드 아키텍처 (Layered Architecture)
+- **challenge** <br>
+  - 애플리케이션을 수평적 계층으로 구성하는 방식으로, 각 계층은 특정 역할을 담당하며 하위 계층에 대한 의존성을 가짐.
+- **pros** <br>
+  - 관심사의 분리가 명확함
+  - 코드 재사용성 증가
+  - 테스트 용이성
+  - 유지보수와 확장이 상대적으로 쉬움
+- **cons** <br>
+  - 지나친 계층화로 성능 저하 가능성
+  - 변경 전파가 모든 계층에 영향을 미칠 수 있음
+  - 비즈니스 로직이 여러 계층에 분산될 위험
+  - 실제 구현에서 계층 간 경계가 모호해질 수 있음
+``` mermaid
+graph TB
+    subgraph "4-계층 아키텍처"
+        P[표현 계층<br/>Presentation Layer]
+        A[응용 계층<br/>Application Layer]
+        D[도메인 계층<br/>Domain Layer]
+        I[인프라 계층<br/>Infrastructure Layer]
+        
+        P --> A
+        A --> D
+        A --> I
+        D --> I
+    end
+    
+    Client[클라이언트] --> P
+    I --> DB[(데이터베이스)]
+    I --> ES[외부 서비스]
+    I --> FileSystem[파일 시스템]
+```
