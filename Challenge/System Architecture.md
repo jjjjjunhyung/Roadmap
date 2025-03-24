@@ -80,7 +80,7 @@ graph TB
 
 # 레이어드 아키텍처 (Layered Architecture)
 - **challenge** <br>
-  - 애플리케이션을 수평적 계층으로 구성하는 방식으로, 각 계층은 특정 역할을 담당하며 하위 계층에 대한 의존성을 가짐.
+  - 애플리케이션을 수평적 계층으로 구성하는 방식으로, 각 계층은 특정 역할을 담당하며 하위 계층에 대한 의존성을 가짐
 - **pros** <br>
   - 관심사의 분리가 명확함
   - 코드 재사용성 증가
@@ -113,7 +113,7 @@ graph TB
 
 # 헥사고날 아키텍처 (Hexagonal Architecture / Ports and Adapters)
 - **challenge** <br>
-  - 비즈니스 로직을 외부 요소(UI, 데이터베이스 등)로부터 격리하여 애플리케이션의 핵심을 보호하는 아키텍처.
+  - 비즈니스 로직을 외부 요소(UI, 데이터베이스 등)로부터 격리하여 애플리케이션의 핵심을 보호하는 아키텍처
 - **pros** <br>
   - 비즈니스 로직의 독립성 보장
   - 외부 시스템 변경에 대한 유연성
@@ -171,7 +171,7 @@ graph TB
 
 # CQRS (Command Query Responsibility Segregation)
 - **challenge** <br>
-  - 데이터를 변경하는 명령(Command)과 데이터를 조회하는 쿼리(Query)를 분리하는 패턴으로, 각각 다른 모델과 다른 데이터 저장소를 사용할 수 있음.
+  - 데이터를 변경하는 명령(Command)과 데이터를 조회하는 쿼리(Query)를 분리하는 패턴으로, 각각 다른 모델과 다른 데이터 저장소를 사용할 수 있음
 - **pros** <br>
   - 읽기와 쓰기 작업에 대한 최적화 가능
   - 확장성 향상 (읽기/쓰기 독립적 확장)
@@ -203,4 +203,46 @@ graph TD
     
     WriteDB -- "이벤트/동기화" --> SyncMech[동기화 메커니즘]
     SyncMech --> ReadDB
+```
+
+# 서비스 지향 아키텍처 (SOA)
+- **challenge** <br>
+  - 비즈니스 기능을 서비스라는 단위로 모듈화하여 구성하는 아키텍처. 기업 비즈니스 요구사항을 중심으로 재사용 가능한 서비스를 구성
+- **pros** <br>
+  - 비즈니스 중심적 접근
+  - 서비스 재사용성 높음
+  - 레거시 시스템과의 통합이 용이
+- **cons** <br>
+  - 중앙화된 ESB(Enterprise Service Bus)가 병목현상이 될 수 있음
+  - 마이크로서비스보다 서비스 크기가 큰 경향
+  - 배포 복잡성
+``` mermaid
+graph TD
+    Client[클라이언트] --> ESB[Enterprise Service Bus]
+    
+    subgraph 비즈니스 서비스
+        ESB <--> Service1[고객 관리 서비스]
+        ESB <--> Service2[주문 관리 서비스]
+        ESB <--> Service3[인벤토리 서비스]
+        ESB <--> Service4[빌링 서비스]
+    end
+    
+    subgraph 애플리케이션 서비스
+        Service1 --> App1[고객 데이터 서비스]
+        Service2 --> App2[주문 처리 서비스]
+        Service2 --> App3[배송 서비스]
+        Service3 --> App4[재고 관리 서비스]
+        Service4 --> App5[결제 처리 서비스]
+    end
+    
+    subgraph 기반 서비스
+        App1 --> DB1[(고객 DB)]
+        App2 --> DB2[(주문 DB)]
+        App3 --> DB2
+        App4 --> DB3[(재고 DB)]
+        App5 --> DB4[(결제 DB)]
+        
+        Registry[서비스 레지스트리]
+        ESB <--> Registry
+    end
 ```
