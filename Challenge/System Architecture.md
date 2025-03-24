@@ -44,38 +44,52 @@ graph TB
   - 테스트와 디버깅이 복잡함
   - 운영 오버헤드 증가
 ``` mermaid
-graph TB
-    Client[클라이언트] --> Gateway[API Gateway]
-    
-    Gateway --> Auth[인증 서비스]
-    Gateway --> Users[사용자 서비스]
-    Gateway --> Products[상품 서비스]
-    Gateway --> Orders[주문 서비스]
-    Gateway --> Payment[결제 서비스]
-    
-    subgraph "마이크로서비스"
-        Auth
-        Users
-        Products
-        Orders
-        Payment
+graph TD
+    subgraph "API Gateway"
+        AG[API Gateway]
     end
     
-    Users --> UserDB[(사용자 DB)]
-    Products --> ProductDB[(상품 DB)]
-    Orders --> OrderDB[(주문 DB)]
-    Payment --> PaymentDB[(결제 DB)]
+    subgraph "User Service"
+        US[User Service]
+        UDB[(User DB)]
+    end
     
-    Orders -.-> Products
-    Orders -.-> Payment
-    Payment -.-> Users
+    subgraph "Order Service"
+        OS[Order Service]
+        ODB[(Order DB)]
+    end
     
-    MessageBus[메시지 버스/이벤트 브로커]
+    subgraph "Payment Service"
+        PS[Payment Service]
+        PDB[(Payment DB)]
+    end
     
-    Orders --이벤트 발행--> MessageBus
-    Payment --이벤트 발행--> MessageBus
-    Products --이벤트 구독--> MessageBus
-    Users --이벤트 구독--> MessageBus
+    subgraph "Inventory Service"
+        IS[Inventory Service]
+        IDB[(Inventory DB)]
+    end
+    
+    subgraph "Notification Service"
+        NS[Notification Service]
+        NDB[(Notification DB)]
+    end
+    
+    C[Client] --> AG
+    AG --> US
+    AG --> OS
+    AG --> PS
+    AG --> IS
+    
+    OS --> PS
+    OS --> IS
+    PS --> NS
+    OS --> NS
+    
+    US --> UDB
+    OS --> ODB
+    PS --> PDB
+    IS --> IDB
+    NS --> NDB
 ```
 
 # 모듈러 모놀리식 아키텍처 (Modular Monolith)
