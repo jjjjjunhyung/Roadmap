@@ -307,7 +307,7 @@ graph TD
 ``` mermaid
 graph TD
     subgraph "클린 아키텍처"
-        subgraph "Entities"
+        subgraph "Entities "
             Entities[비즈니스 객체와 규칙]
         end
         
