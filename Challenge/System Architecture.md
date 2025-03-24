@@ -354,6 +354,52 @@ graph TD
     end
 ```
 
+# 이벤트 기반 아키텍처 (Event-Driven Architecture)
+- **challenge** <br>
+  - 이벤트의 생성, 감지, 소비, 반응을 통해 구성 요소 간 통신이 이루어지는 소프트웨어 아키텍처 패턴
+- **pros** <br>
+  - 느슨한 결합(Loose Coupling)
+  - 확장성과 유연성
+  - 비동기 처리
+  - 실시간 처리 가능
+- **cons** <br>
+  - 복잡한 이벤트 추적 및 디버깅
+  - 이벤트 순서 보장의 어려움
+  - 일관성 유지 도전적
+  - 초기 설계 복잡성
+``` mermaid
+graph TD
+    subgraph "Publishers"
+        P1[서비스 A] -->|이벤트 발행| EB
+        P2[서비스 B] -->|이벤트 발행| EB
+        P3[서비스 C] -->|이벤트 발행| EB
+    end
+    
+    EB[이벤트 버스/메시지 브로커]
+    
+    EB -->|주문 생성 이벤트| C1
+    EB -->|결제 완료 이벤트| C2
+    EB -->|배송 상태 이벤트| C3
+    EB -->|모든 이벤트| C4
+    
+    subgraph "Subscribers"
+        C1[결제 서비스]
+        C2[재고 서비스]
+        C3[배송 서비스] 
+        C4[분석 서비스]
+    end
+    
+    subgraph "이벤트 스토어"
+        ES[Event Store/Database]
+    end
+    
+    P1 -.->|이벤트 기록| ES
+    P2 -.->|이벤트 기록| ES
+    P3 -.->|이벤트 기록| ES
+    
+    ES -.->|이벤트 재생| C5[이벤트 재생 소비자]
+```
+
 # 사가 패턴 (Saga Pattern)
 - **challenge** <br>
   - 분산 트랜잭션 관리를 위한 패턴으로, 각 마이크로서비스의 로컬 트랜잭션을 순차적으로 실행하고 실패 시 보상 트랜잭션을 통해 일관성을 유지
