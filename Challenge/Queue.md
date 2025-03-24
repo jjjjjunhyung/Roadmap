@@ -73,6 +73,44 @@ flowchart LR
   - 대용량 메시지 처리시 성능 저하 가능성
   - 기본적으로 디스크에 영구 저장하여 I/O 병목 발생 가능
   - 복잡한 설정이 필요한 경우 학습 곡선 존재
+```mermaid
+flowchart LR
+    subgraph "Producers"
+        P1["Producer 1"]
+        P2["Producer 2"]
+    end
+    
+    P1 -->|메시지 발행| E1
+    P2 -->|메시지 발행| E2
+    
+    subgraph "RabbitMQ 브로커"
+        subgraph "Exchange"
+            E1["Exchange 1<br>(Direct)"]
+            E2["Exchange 2<br>(Fanout)"]
+        end
+        
+        subgraph "Queue"
+            Q1["Queue 1"]
+            Q2["Queue 2"]
+            Q3["Queue 3"]
+        end
+        
+        E1 -->|라우팅 키| Q1
+        E1 -->|라우팅 키| Q2
+        E2 -->|브로드캐스트| Q2
+        E2 -->|브로드캐스트| Q3
+    end
+    
+    Q1 -->|메시지 소비| C1
+    Q2 -->|메시지 소비| C2
+    Q3 -->|메시지 소비| C3
+    
+    subgraph "Consumers"
+        C1["Consumer 1"]
+        C2["Consumer 2"]
+        C3["Consumer 3"]
+    end
+```
 
 # Apache ActiveMQ
 - **challenge** <br>
@@ -88,6 +126,40 @@ flowchart LR
   - 큰 부하에서 안정성 이슈 발생 가능
   - 설정 및 관리가 복잡할 수 있음
   - 최신 버전의 ActiveMQ Artemis로 이전하는 추세
+```mermaid
+flowchart LR
+    subgraph "Producers"
+        P1["Producer 1<br>(Queue 송신자)"]
+        P2["Producer 2<br>(Topic 발행자)"]
+    end
+    
+    P1 -->|Point-to-Point 메시지| Q
+    P2 -->|Publish-Subscribe 메시지| T
+    
+    subgraph "ActiveMQ 브로커"
+        subgraph "Destinations"
+            Q["Queue<br>(Point-to-Point)"]
+            T["Topic<br>(Publish-Subscribe)"]
+        end
+        
+        Store["Message Store<br>(KahaDB)"]
+        Q -.->|지속성| Store
+        T -.->|지속성| Store
+    end
+    
+    Q -->|단일 소비자에게 전달| C1
+    T -->|모든 구독자에게 전달| S1
+    T -->|모든 구독자에게 전달| S2
+    
+    subgraph "Consumers"
+        C1["Queue Consumer"]
+        
+        subgraph "Topic Subscribers"
+            S1["Subscriber 1"]
+            S2["Subscriber 2"]
+        end
+    end
+```
 
 # Redis Streams
 - **challenge** <br>
@@ -103,3 +175,40 @@ flowchart LR
   - Kafka나 RabbitMQ에 비해 고급 라우팅 기능 부족
   - 대규모 분산 시스템에서의 확장성 제한
   - 비동기식 복제로 인한 잠재적 데이터 손실 위험
+```mermaid
+flowchart LR
+    subgraph "Producers"
+        P1["Producer 1"]
+        P2["Producer 2"]
+    end
+    
+    P1 -->|XADD| S1
+    P2 -->|XADD| S2
+    
+    subgraph "Redis Streams"
+        S1["Stream 1<br>메시지들: {ID: 시간-시퀀스, 필드: 값}"]
+        S2["Stream 2<br>메시지들: {ID: 시간-시퀀스, 필드: 값}"]
+    end
+    
+    S1 -->|XREADGROUP| CG1
+    S1 -->|XREADGROUP| CG2
+    S2 -->|XREADGROUP| CG3
+    
+    subgraph "Consumer Groups"
+        CG1["Consumer Group 1"]
+        CG2["Consumer Group 2"]
+        CG3["Consumer Group 3"]
+    end
+    
+    CG1 -->|메시지 분배| C1
+    CG1 -->|메시지 분배| C2
+    CG2 -->|메시지 분배| C3
+    CG3 -->|메시지 분배| C4
+    
+    subgraph "Consumers"
+        C1["Consumer 1"]
+        C2["Consumer 2"]
+        C3["Consumer 3"]
+        C4["Consumer 4"]
+    end
+```
