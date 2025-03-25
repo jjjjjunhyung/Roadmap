@@ -1,7 +1,19 @@
 # Spring
+## IoC (Inversion of Control) & Spring Bean
+## AOP (Aspect-Oriented Programming)
+## Spring MVC
+## Spring Security
+## Test
+## Web Server & Web Aplication Server & API Server
+## Data Acess & ORM
+## Spring Webflux
 
 # JVM
-## 가비지 컬렉션 (GC)
+## JVM Structure & Components
+## JVM Memory
+## JVM JIT (Just-In-Time) Compiler
+## JVM Thread
+## JVM Garbage Collection
 - **challenge** <br>
   - JVM을 사용하는 프로젝트의 별도 설정을 해주지 않으면 사용하는 컴퓨팅 자원의 사이즈에 따라 GC 알고리즘이 채택 <br>
   - Production 환경에서 관리자가 의도치 않게 어플리케이션이 원시적인 GC 알고리즘을 사용할 수 있음
