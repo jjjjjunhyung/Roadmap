@@ -1,6 +1,6 @@
 # 스케치 컬러화 애플리케이션 인프라 구조
 
-[www.junhyung.xyz](https://www.junhyung.xyz) <br>
+<a href="https://www.junhyung.xyz" target="_blank" rel="noopener noreferrer">www.junhyung.xyz</a> <br>
 이 프로젝트는 스케치 이미지를 컬러화하는 웹 애플리케이션을 AWS 인프라에 배포한 구조를 보여줍니다. <br>
 Terraform으로 구성된 인프라와 Docker 컨테이너로 배포된 애플리케이션을 포함합니다.
 
