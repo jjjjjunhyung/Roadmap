@@ -52,7 +52,6 @@ graph TD
 
 ### 5. Amazon EC2
 - 인스턴스 유형: **t2.micro**
-- Amazon Linux 2023 AMI
 - 퍼블릭 서브넷에 배치
 - Elastic IP 할당
 - 보안 그룹: SSH(22), HTTP(80), HTTPS(443) 트래픽 허용
