@@ -29,14 +29,7 @@ resource "aws_instance" "public_ec2" {
     delete_on_termination = true
   }
 
-  user_data = <<-EOF
-    #!/bin/bash
-    sudo dd if=/dev/zero of=/swapfile bs=128M count=16
-    sudo chmod 600 /swapfile
-    sudo mkswap /swapfile
-    sudo swapon /swapfile
-    echo '/swapfile swap swap defaults 0 0' | sudo tee -a /etc/fstab
-  EOF
+  user_data = file("${path.module}/user_data/user_data.sh")
 
   tags = merge(
     local.tags,
@@ -58,4 +51,9 @@ resource "aws_eip" "public_ec2_eip" {
       Name = "public-ec2-eip"
     }
   )
+}
+
+resource "aws_eip_association" "eip_assoc" {
+  instance_id   = aws_instance.public_ec2.id
+  allocation_id = aws_eip.public_ec2_eip.id
 }
