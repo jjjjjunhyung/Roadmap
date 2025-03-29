@@ -65,7 +65,7 @@ graph TD
 ```yaml
 services:
   nginx:
-    image: 021891580251.dkr.ecr.ap-northeast-2.amazonaws.com/app-repository:nginx
+    image: *.dkr.ecr.ap-northeast-2.amazonaws.com/app-repository:nginx
     ports:
       - "80:80"
     depends_on:
@@ -73,7 +73,7 @@ services:
     restart: always
 
   app:
-    image: 021891580251.dkr.ecr.ap-northeast-2.amazonaws.com/app-repository:app
+    image: *.dkr.ecr.ap-northeast-2.amazonaws.com/app-repository:app
     restart: always
     environment:
       - PORT=7860
