@@ -11,7 +11,27 @@
     - 대규모 환경에서 리소스 소비가 많고 운영 비용이 높을 수 있음 <br>
     - 초기 설정 및 구성이 복잡하고 러닝 커브가 가파름 <br>
     - 대규모 데이터 처리 시 성능 튜닝이 필요할 수 있음
+```mermaid
+flowchart LR
+    subgraph "Data Sources"
+        A1[Application Logs]
+        A2[System Logs]
+        A3[API Logs]
+        A4[Database Logs]
+    end
 
+    subgraph "ELK Stack"
+        B[Logstash<br/>수집/변환/전송] --> C[Elasticsearch<br/>저장/검색/인덱싱]
+        C --> D[Kibana<br/>시각화/대시보드/분석]
+    end
+
+    A1 --> B
+    A2 --> B
+    A3 --> B
+    A4 --> B
+
+    E[운영자] --> D
+```
 # PLG Stack <br>
   - **solution** <br>
     - Prometheus: 메트릭 기반 모니터링 시스템으로 시계열 데이터 수집 및 알림 기능 제공 <br>
@@ -26,3 +46,30 @@
     - Elasticsearch에 비해 Loki의 로그 검색 기능이 제한적일 수 있음 <br>
     - 장기 데이터 저장 및 관리에 추가 솔루션이 필요할 수 있음 <br>
     - 복잡한 알림 규칙 설정 및 관리에 전문 지식이 필요함
+```mermaid
+flowchart LR
+    subgraph "Data Sources"
+        A1[애플리케이션]
+        A2[서버/인프라]
+        A3[Kubernetes]
+    end
+
+    subgraph "PLG Stack"
+        B1[Prometheus<br/>메트릭 수집/알림]
+        B2[Loki<br/>로그 집계/저장]
+        C[Grafana<br/>통합 시각화/대시보드]
+    end
+
+    A1 -- 메트릭 --> B1
+    A2 -- 메트릭 --> B1
+    A3 -- 메트릭 --> B1
+    
+    A1 -- 로그 --> B2
+    A2 -- 로그 --> B2
+    A3 -- 로그 --> B2
+    
+    B1 --> C
+    B2 --> C
+
+    D[운영자] --> C
+```
