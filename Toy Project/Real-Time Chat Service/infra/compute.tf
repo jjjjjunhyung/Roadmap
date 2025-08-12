@@ -1,4 +1,4 @@
-# Compute Instance (Ampere A1 Flex)
+# Ampere A1 Flex compute instance with Ubuntu 24.04 LTS
 resource "oci_core_instance" "chat_server" {
   compartment_id      = var.compartment_ocid
   availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
