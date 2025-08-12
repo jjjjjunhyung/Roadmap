@@ -1,6 +1,4 @@
-# Oracle Cloud Infrastructure Configuration
 # Actual values for deployment
-
 # OCI Authentication (required)
 tenancy_ocid     = "ocid1.tenancy.oc1.*"
 user_ocid        = "ocid1.user.oc1.*"
@@ -27,3 +25,8 @@ boot_volume_size_in_gbs = 50
 
 # SSH Key
 ssh_public_key = "ssh-rsa * junhyung@jhcho"
+
+# TLS/HTTPS Configuration - Let's Encrypt
+use_letsencrypt    = true
+letsencrypt_domain = "www.junhyung.xyz"
+letsencrypt_email  = "admin@junhyung.xyz"
