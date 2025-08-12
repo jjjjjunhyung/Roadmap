@@ -1,4 +1,4 @@
-# Oracle Cloud Infrastructure Authentication
+# OCI Authentication
 variable "tenancy_ocid" {
   description = "The OCID of the tenancy"
   type        = string
@@ -85,4 +85,44 @@ variable "boot_volume_size_in_gbs" {
 variable "ssh_public_key" {
   description = "SSH public key for the compute instance"
   type        = string
+}
+
+# Let's Encrypt TLS/HTTPS Configuration
+variable "use_letsencrypt" {
+  description = "Whether to use Let's Encrypt certificates generated on the instance"
+  type        = bool
+  default     = true
+}
+
+variable "letsencrypt_domain" {
+  description = "Domain name for Let's Encrypt certificate"
+  type        = string
+  default     = "www.junhyung.xyz"
+}
+
+variable "letsencrypt_email" {
+  description = "Email address for Let's Encrypt registration"
+  type        = string
+  default     = "admin@junhyung.xyz"
+}
+
+variable "letsencrypt_cert_content" {
+  description = "Content of Let's Encrypt certificate (for updates after generation)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "letsencrypt_key_content" {
+  description = "Content of Let's Encrypt private key (for updates after generation)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "letsencrypt_chain_content" {
+  description = "Content of Let's Encrypt chain certificate (for updates after generation)"
+  type        = string
+  default     = ""
+  sensitive   = true
 }
