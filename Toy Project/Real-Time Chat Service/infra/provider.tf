@@ -1,4 +1,4 @@
-# Configure the Oracle Cloud Infrastructure Provider
+# OCI provider configuration
 provider "oci" {
   tenancy_ocid     = var.tenancy_ocid
   user_ocid        = var.user_ocid
