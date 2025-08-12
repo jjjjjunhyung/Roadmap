@@ -1,6 +1,4 @@
-#cloud-config
 # Cloud-init for ${project_name} ${environment} server
-
 # 1. 패키지 관리 설정
 package_update: true
 package_upgrade: true
@@ -17,7 +15,7 @@ packages:
   - python3
   - python3-pip
   - python3-venv
-  - ufw
+  - certbot
 
 # 3. 파일 생성
 write_files:
@@ -48,6 +46,118 @@ write_files:
       else
           echo "❌ Failed to log into Oracle Container Registry"
           exit 1
+      fi
+
+  # Let's Encrypt 인증서 자동 발급 및 갱신 스크립트
+  - path: /usr/local/sbin/setup-letsencrypt.sh
+    permissions: '0755'
+    owner: root:root
+    content: |
+      #!/bin/bash
+      set -e
+      
+      DOMAIN="www.junhyung.xyz"
+      CERT_DIR="/opt/letsencrypt"
+      EMAIL="admin@junhyung.xyz"
+      
+      echo "--- 📜 Let's Encrypt 인증서 설정 시작 ---"
+      
+      # 인증서 저장 디렉터리 생성
+      mkdir -p $CERT_DIR
+      
+      # 도메인이 이 서버를 가리키는지 확인
+      echo "🔍 도메인 DNS 확인 중..."
+      CURRENT_IP=$(curl -s ifconfig.me || curl -s ipinfo.io/ip)
+      DOMAIN_IP=$(dig +short $DOMAIN | tail -n1)
+      
+      echo "현재 서버 IP: $CURRENT_IP"
+      echo "도메인($DOMAIN) IP: $DOMAIN_IP"
+      
+      if [ "$CURRENT_IP" != "$DOMAIN_IP" ]; then
+          echo "⚠️ 경고: 도메인이 아직 이 서버를 가리키지 않습니다."
+          echo "DNS 전파를 기다리는 중... (최대 10분)"
+          for i in {1..60}; do
+              sleep 10
+              DOMAIN_IP=$(dig +short $DOMAIN | tail -n1)
+              if [ "$CURRENT_IP" = "$DOMAIN_IP" ]; then
+                  echo "✅ DNS 전파 완료!"
+                  break
+              fi
+              echo "대기 중... ($i/60)"
+          done
+      fi
+      
+      # Let's Encrypt 인증서 발급 (웹루트 방식 사용)
+      echo "🔒 Let's Encrypt 인증서 발급 중..."
+      certbot certonly \
+          --webroot \
+          --webroot-path /opt/chat-service/webroot \
+          --non-interactive \
+          --agree-tos \
+          --email $EMAIL \
+          --domains $DOMAIN \
+          --no-eff-email
+      
+      # 발급된 인증서를 /opt/letsencrypt로 복사
+      if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+          echo "📋 인증서 복사 중..."
+          cp "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" "$CERT_DIR/cert.pem"
+          cp "/etc/letsencrypt/live/$DOMAIN/privkey.pem" "$CERT_DIR/privkey.pem"
+          cp "/etc/letsencrypt/live/$DOMAIN/chain.pem" "$CERT_DIR/chain.pem" 2>/dev/null || echo "체인 파일 없음"
+          
+          # 권한 설정
+          chown -R ubuntu:ubuntu $CERT_DIR
+          chmod 600 $CERT_DIR/privkey.pem
+          chmod 644 $CERT_DIR/cert.pem $CERT_DIR/chain.pem 2>/dev/null || true
+          
+          echo "✅ 인증서가 $CERT_DIR 에 저장되었습니다."
+          
+          # 인증서 정보 출력
+          echo "📊 인증서 정보:"
+          openssl x509 -in $CERT_DIR/cert.pem -text -noout | grep -E "(Subject:|Not Before|Not After)"
+      else
+          echo "❌ 인증서 발급 실패"
+          exit 1
+      fi
+      
+      # 자동 갱신 설정 (crontab)
+      echo "⏰ 자동 갱신 설정 중..."
+      (crontab -l 2>/dev/null; echo "0 2 * * 0 /usr/bin/certbot renew --quiet --webroot --webroot-path /opt/chat-service/webroot && /usr/local/sbin/update-lb-cert.sh") | crontab -
+      
+      echo "🎉 Let's Encrypt 설정 완료!"
+
+  # 로드 밸런서 인증서 업데이트 스크립트
+  - path: /usr/local/sbin/update-lb-cert.sh
+    permissions: '0755'
+    owner: root:root
+    content: |
+      #!/bin/bash
+      set -e
+      
+      DOMAIN="www.junhyung.xyz"
+      CERT_DIR="/opt/letsencrypt"
+      
+      echo "--- 🔄 로드 밸런서 인증서 업데이트 ---"
+      
+      # 새로운 인증서가 있는지 확인
+      if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+          # 인증서 복사
+          cp "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" "$CERT_DIR/cert.pem"
+          cp "/etc/letsencrypt/live/$DOMAIN/privkey.pem" "$CERT_DIR/privkey.pem"
+          cp "/etc/letsencrypt/live/$DOMAIN/chain.pem" "$CERT_DIR/chain.pem" 2>/dev/null || true
+          
+          # 권한 설정
+          chown -R ubuntu:ubuntu $CERT_DIR
+          chmod 600 $CERT_DIR/privkey.pem
+          chmod 644 $CERT_DIR/cert.pem $CERT_DIR/chain.pem 2>/dev/null || true
+          
+          echo "✅ 인증서 업데이트 완료: $(date)"
+          
+          # TODO: 여기에 OCI CLI를 사용해 로드 밸런서 인증서를 업데이트하는 로직 추가
+          # oci lb certificate update --load-balancer-id <LB_ID> --certificate-name junhyung-xyz ...
+          
+      else
+          echo "❌ 새로운 인증서를 찾을 수 없습니다."
       fi
 
   # 인스턴스 초기 설정을 위한 통합 스크립트
@@ -133,13 +243,25 @@ runcmd:
 
   # 애플리케이션 기본 디렉터리 생성
   - mkdir -p /opt/chat-service
-  - chown ubuntu:ubuntu /opt/chat-service
+  - mkdir -p /opt/chat-service/webroot
+  - chown -R ubuntu:ubuntu /opt/chat-service
 
-  # UFW 방화벽 설정
-  - ufw --force reset
-  - ufw allow 22/tcp
-  - ufw allow 3000/tcp
-  - ufw --force enable
+  # 인스턴스 OS 방화벽에 3000/tcp 허용 및 영구 저장 (최소 추가)
+  - |
+    set -e
+    iptables -C INPUT -p tcp --dport 3000 -j ACCEPT || iptables -I INPUT -p tcp --dport 3000 -j ACCEPT
+    if ! command -v netfilter-persistent >/dev/null 2>&1; then
+      apt-get update -y
+      DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent netfilter-persistent
+    fi
+    netfilter-persistent save
+
+  # Let's Encrypt 인증서 발급 (백그라운드로 실행, 5분 후)
+  - |
+    set -e
+    echo "⏰ Let's Encrypt 설정을 5분 후에 백그라운드로 실행합니다..."
+    (sleep 300 && /usr/local/sbin/setup-letsencrypt.sh > /var/log/letsencrypt-setup.log 2>&1) &
+    echo "📋 진행 상황은 'tail -f /var/log/letsencrypt-setup.log' 로 확인할 수 있습니다."
 
 # 5. 최종 메시지
 final_message: |
@@ -151,7 +273,6 @@ final_message: |
   ▸ 2 GiB 스왑 파일 활성화
   ▸ 추가 블록 볼륨 /data 마운트
   ▸ 기본 디렉터리: /opt/chat-service
-  ▸ 방화벽: SSH(22), App(3000) 허용
 
   🚀 배포 절차:
   1) Container Registry 로그인:
@@ -165,7 +286,14 @@ final_message: |
   3) 헬스체크:
      curl http://localhost:3000/healthz
   
+  🔒 Let's Encrypt 인증서:
+  ▸ 인스턴스 시작 5분 후 자동 발급 시작
+  ▸ 진행 상황 확인: tail -f /var/log/letsencrypt-setup.log
+  ▸ 인증서 위치: /opt/letsencrypt/
+  ▸ 자동 갱신: 매주 일요일 오전 2시
+  
   📁 주요 디렉터리:
   ▸ /opt/chat-service - 애플리케이션 코드
   ▸ /data - 영구 데이터 저장소 (50GB 블록 볼륨)
+  ▸ /opt/letsencrypt - Let's Encrypt 인증서
   ▸ /home/ubuntu/docker-login.sh - Container Registry 로그인 스크립트
