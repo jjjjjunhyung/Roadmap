@@ -1,4 +1,4 @@
-# Virtual Cloud Network (VCN)
+# VCN and Networking Resources
 resource "oci_core_vcn" "chat_vcn" {
   compartment_id = var.compartment_ocid
   cidr_block     = var.vcn_cidr_block
@@ -8,7 +8,6 @@ resource "oci_core_vcn" "chat_vcn" {
   freeform_tags = local.network_tags
 }
 
-# Internet Gateway
 resource "oci_core_internet_gateway" "chat_igw" {
   compartment_id = var.compartment_ocid
   vcn_id         = oci_core_vcn.chat_vcn.id
@@ -18,7 +17,7 @@ resource "oci_core_internet_gateway" "chat_igw" {
   freeform_tags = local.network_tags
 }
 
-# Route Table for Public Subnet
+# Public subnet routing
 resource "oci_core_route_table" "public_route_table" {
   compartment_id = var.compartment_ocid
   vcn_id         = oci_core_vcn.chat_vcn.id
@@ -33,7 +32,7 @@ resource "oci_core_route_table" "public_route_table" {
   freeform_tags = local.network_tags
 }
 
-# Public Subnet
+# Public subnet for compute instances and load balancer
 resource "oci_core_subnet" "public_subnet" {
   compartment_id      = var.compartment_ocid
   vcn_id              = oci_core_vcn.chat_vcn.id
