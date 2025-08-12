@@ -1,4 +1,4 @@
-# Oracle Cloud Infrastructure Provider Configuration
+# Terraform and provider version requirements
 terraform {
   required_version = ">= 1.0"
   required_providers {
