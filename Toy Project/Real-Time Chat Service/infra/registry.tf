@@ -1,7 +1,4 @@
-# Container Registry for storing container images
-# Note: OCI Container Registry is free within generous limits
-
-# Create a Container Repository
+# Container Registry for application images
 resource "oci_artifacts_container_repository" "chat_repo" {
   compartment_id = var.compartment_ocid
   display_name   = "${local.name_prefix}-app"
