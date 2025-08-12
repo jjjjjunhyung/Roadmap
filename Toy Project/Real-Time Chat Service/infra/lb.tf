@@ -1,4 +1,4 @@
-# Public Flexible Load Balancer
+# Load Balancer and Backend Configuration
 resource "oci_load_balancer_load_balancer" "chat_lb" {
   compartment_id = var.compartment_ocid
   display_name   = "${local.name_prefix}-lb"
@@ -16,7 +16,7 @@ resource "oci_load_balancer_load_balancer" "chat_lb" {
   freeform_tags = merge(local.network_tags, { Type = "lb" })
 }
 
-# Backend Set + Health-Checker
+# Backend set with health check configuration
 resource "oci_load_balancer_backend_set" "chat_bs" {
   load_balancer_id = oci_load_balancer_load_balancer.chat_lb.id
   name             = "chat-backend-set"
@@ -24,11 +24,12 @@ resource "oci_load_balancer_backend_set" "chat_bs" {
 
   health_checker {
     protocol          = "HTTP"
-    url_path          = "/healthz"
-    port              = 3000
-    retries           = 3
+    port              = 80
+    retries           = 2
     interval_ms       = 10000
     timeout_in_millis = 3000
+    url_path          = "/health"
+    return_code       = 200
   }
 }
 
@@ -38,26 +39,8 @@ resource "oci_load_balancer_backend" "chat_backend" {
   backendset_name  = oci_load_balancer_backend_set.chat_bs.name
 
   ip_address = data.oci_core_private_ips.chat_server_private_ips.private_ips[0].ip_address
-  port       = 3000
+  port       = 80
   weight     = 1
-}
-
-# Listeners
-resource "oci_load_balancer_listener" "chat_http_listener" {
-  load_balancer_id         = oci_load_balancer_load_balancer.chat_lb.id
-  name                     = "http"
-  default_backend_set_name = oci_load_balancer_backend_set.chat_bs.name
-  protocol                 = "HTTP"
-  port                     = 80
-}
-
-resource "oci_load_balancer_listener" "chat_https_listener" {
-  load_balancer_id         = oci_load_balancer_load_balancer.chat_lb.id
-  name                     = "https"
-  default_backend_set_name = oci_load_balancer_backend_set.chat_bs.name
-  protocol                 = "HTTP" # TLS 종료 시 TERMINATED_HTTPS 로 변경
-  port                     = 443
-  # ssl_configuration { certificate_name = "chat-cert" }
 }
 
 # Load Balancer 전용 NSG
@@ -100,7 +83,7 @@ resource "oci_core_network_security_group_security_rule" "lb_ingress_https" {
   }
 }
 
-# Egress: LB to VM (3000)
+# Egress: LB to VM (80)
 resource "oci_core_network_security_group_security_rule" "lb_egress_to_vm" {
   network_security_group_id = oci_core_network_security_group.lb_nsg.id
   direction                 = "EGRESS"
@@ -110,14 +93,14 @@ resource "oci_core_network_security_group_security_rule" "lb_egress_to_vm" {
 
   tcp_options {
     destination_port_range {
-      min = 3000
-      max = 3000
+      min = 80
+      max = 80
     }
   }
 }
 
-# VM-NSG에 LB 소스 허용 (3000)
-resource "oci_core_network_security_group_security_rule" "vm_ingress_from_lb_3000" {
+# VM-NSG에 LB 소스 허용 (80)
+resource "oci_core_network_security_group_security_rule" "vm_ingress_from_lb_80" {
   network_security_group_id = oci_core_network_security_group.chat_nsg.id
   direction                 = "INGRESS"
   protocol                  = "6"
@@ -126,8 +109,8 @@ resource "oci_core_network_security_group_security_rule" "vm_ingress_from_lb_300
 
   tcp_options {
     destination_port_range {
-      min = 3000
-      max = 3000
+      min = 80
+      max = 80
     }
   }
 }
