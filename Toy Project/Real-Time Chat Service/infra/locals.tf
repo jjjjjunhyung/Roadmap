@@ -1,4 +1,4 @@
-# Local values for common configurations
+# Local values and common configurations
 locals {
   # Common naming convention
   name_prefix = "${var.project_name}-${var.environment}"
