@@ -1,10 +1,10 @@
-# Security List for Public Subnet
+# Network Security Configuration
 resource "oci_core_security_list" "public_security_list" {
   compartment_id = var.compartment_ocid
   vcn_id         = oci_core_vcn.chat_vcn.id
   display_name   = "${local.name_prefix}-public-sl"
 
-  # Egress Rules (Outbound)
+  # Allow all outbound traffic
   egress_security_rules {
     destination      = "0.0.0.0/0"
     protocol         = "all"
@@ -12,9 +12,7 @@ resource "oci_core_security_list" "public_security_list" {
     description      = "Allow all outbound traffic"
   }
 
-  # Ingress Rules (Inbound)
-  # Note: 서브넷으로 들어오는 트래픽은 반드시
-  #       NSG(아래) 중 하나가 허락해야만 통과
+  # Inbound traffic is controlled by Network Security Groups (NSGs)
 
   freeform_tags = merge(local.network_tags, {
     Type = "public"
