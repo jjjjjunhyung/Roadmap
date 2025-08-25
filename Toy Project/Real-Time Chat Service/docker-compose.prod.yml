@@ -1,0 +1,262 @@
+version: '3.8'
+
+# Production optimized docker-compose configuration
+# Resource allocation for 4 CPU cores, 24GB RAM OCI instance
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: chat-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: chatdb
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    ports:
+      - "127.0.0.1:27017:27017"
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+          cpus: '1.0'
+        reservations:
+          memory: 3G
+          cpus: '0.5'
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - chat-network
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: chat-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD} --maxmemory 2gb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: '0.5'
+        reservations:
+          memory: 1G
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - chat-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: chat-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - chat-network
+
+  backend:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongodb:27017/chatdb?authSource=admin
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET_NAME: chat-files
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 24h
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    volumes:
+      - ./app/uploads:/app/uploads
+    # 내부 네트워크로만 노출 (Nginx가 프록시)
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: '0.75'
+        reservations:
+          memory: 1G
+          cpus: '0.375'
+      # Swarm 사용 시 replicas로 스케일링 가능 (Compose에선 --scale 사용)
+      # replicas: 2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - chat-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: chat-frontend
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL: https://www.junhyung.xyz/api
+      REACT_APP_WS_URL: wss://www.junhyung.xyz
+    ports:
+      - "127.0.0.1:3001:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - chat-network
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: chat-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - chat-network
+
+# Worker temporarily disabled
+  # worker:
+  #   build:
+  #     context: ./app
+  #     dockerfile: Dockerfile.worker
+  #   container_name: chat-worker
+  #   restart: unless-stopped
+  #   environment:
+  #     NODE_ENV: production
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     REDIS_PASSWORD: ${REDIS_PASSWORD}
+  #     MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongodb:27017/chatdb?authSource=admin
+  #     MINIO_ENDPOINT: minio
+  #     MINIO_PORT: 9000
+  #     MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+  #     MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+  #   depends_on:
+  #     mongodb:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 2G
+  #         cpus: '0.5'
+  #       reservations:
+  #         memory: 512M
+  #         cpus: '0.25'
+  #   healthcheck:
+  #     test: ["CMD", "node", "dist/worker.js", "--health-check"]
+  #     interval: 60s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 30s
+  #   networks:
+  #     - chat-network
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  chat-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
