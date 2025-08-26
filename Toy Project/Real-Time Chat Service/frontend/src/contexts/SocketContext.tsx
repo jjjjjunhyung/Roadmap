@@ -28,6 +28,8 @@ interface SocketContextType {
   roomOnlineUsers: OnlineUser[];
   currentRoom: string | null;
   sendMessage: (content: string, room: string) => void;
+  editMessage: (messageId: string, room: string, content: string) => void;
+  deleteMessage: (messageId: string, room: string) => void;
   joinRoom: (roomId: string) => void;
   leaveRoom: (roomId: string) => void;
   setCurrentRoom: (roomId: string | null) => void;
@@ -135,6 +137,47 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         });
       });
 
+      newSocket.on('messageUpdated', (message: any) => {
+        // Update specific message in cache
+        const roomId = message.room;
+        queryClient.setQueryData(['messages', roomId], (oldData: any) => {
+          const prev = Array.isArray(oldData) ? oldData : [];
+          return prev.map((m: any) => (m._id === message._id ? { ...m, ...message } : m));
+        });
+        // Update room preview if needed
+        queryClient.setQueryData('rooms', (oldData: any) => {
+          if (!oldData || !Array.isArray(oldData)) return oldData;
+          const updated = oldData.map((room: any) => {
+            if (room._id !== roomId) return room;
+            if (room.lastMessage && (room.lastMessage as any)?._id === message._id) {
+              return { ...room, lastMessage: { ...(room.lastMessage as any), content: message.content }, updatedAt: message.editedAt || room.updatedAt };
+            }
+            return room;
+          });
+          return updated;
+        });
+      });
+
+      newSocket.on('messageDeleted', ({ messageId, roomId }: any) => {
+        // Remove message from cache
+        queryClient.setQueryData(['messages', roomId], (oldData: any) => {
+          const prev = Array.isArray(oldData) ? oldData : [];
+          return prev.filter((m: any) => m._id !== messageId);
+        });
+        // If deleted was the lastMessage, conservatively clear preview content
+        queryClient.setQueryData('rooms', (oldData: any) => {
+          if (!oldData || !Array.isArray(oldData)) return oldData;
+          const updated = oldData.map((room: any) => {
+            if (room._id !== roomId) return room;
+            if ((room.lastMessage as any)?._id === messageId) {
+              return { ...room, lastMessage: { ...(room.lastMessage as any), content: '' } };
+            }
+            return room;
+          });
+          return updated;
+        });
+      });
+
       // 전역 온라인 사용자 목록은 현재 UI에서 사용하지 않으므로 제거
 
       newSocket.on('userJoinedRoom', ({ userId, roomId }) => {
@@ -191,6 +234,18 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     }
   };
 
+  const editMessage = (messageId: string, room: string, content: string) => {
+    if (socket && connected) {
+      socket.emit('editMessage', { messageId, roomId: room, content });
+    }
+  };
+
+  const deleteMessage = (messageId: string, room: string) => {
+    if (socket && connected) {
+      socket.emit('deleteMessage', { messageId, roomId: room });
+    }
+  };
+
   const joinRoom = (roomId: string) => {
     if (socket && connected) {
       socket.emit('joinRoom', { roomId });
@@ -225,6 +280,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     roomOnlineUsers,
     currentRoom,
     sendMessage,
+    editMessage,
+    deleteMessage,
     joinRoom,
     leaveRoom,
     setCurrentRoom,

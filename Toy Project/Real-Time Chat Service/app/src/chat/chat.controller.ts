@@ -4,6 +4,7 @@ import {
   Post, 
   Body, 
   Param, 
+  Put,
   Query, 
   UseGuards, 
   Request,
@@ -14,6 +15,7 @@ import {
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateRoomDto } from './dto/create-room.dto';
+import { UpdateMessageDto } from './dto/update-message.dto';
 
 @Controller('chat')
 @UseGuards(JwtAuthGuard)
@@ -63,5 +65,15 @@ export class ChatController {
   async deleteMessage(@Param('messageId') messageId: string, @Request() req) {
     this.validateGuestUser(req.user.sub);
     return this.chatService.deleteMessage(messageId, req.user.sub);
+  }
+
+  @Put('messages/:messageId')
+  async updateMessage(
+    @Param('messageId') messageId: string,
+    @Body() body: UpdateMessageDto,
+    @Request() req,
+  ) {
+    this.validateGuestUser(req.user.sub);
+    return this.chatService.updateMessage(messageId, req.user.sub, body.content);
   }
 }

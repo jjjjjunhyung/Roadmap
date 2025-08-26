@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 
@@ -118,8 +118,11 @@ export class ChatService {
 
   async deleteMessage(messageId: string, userId: string): Promise<void> {
     const message = await this.messageModel.findById(messageId);
-    if (!message || message.sender !== userId) {
-      throw new Error('Unauthorized or message not found');
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+    if (message.sender !== userId) {
+      throw new ForbiddenException('You can only delete your own messages');
     }
 
     await this.messageModel.findByIdAndDelete(messageId);
@@ -128,5 +131,32 @@ export class ChatService {
       type: 'message_deleted',
       data: { messageId, roomId: message.room },
     });
+  }
+
+  async updateMessage(messageId: string, userId: string, content: string) {
+    const trimmed = (content || '').trim();
+    if (!trimmed) {
+      throw new ForbiddenException('Content cannot be empty');
+    }
+
+    const message = await this.messageModel.findById(messageId);
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+    if (message.sender !== userId) {
+      throw new ForbiddenException('You can only edit your own messages');
+    }
+
+    message.content = trimmed;
+    (message as any).edited = true;
+    (message as any).editedAt = new Date();
+    const saved = await message.save();
+
+    await this.redisService.publishMessage('chat_messages', {
+      type: 'message_edited',
+      data: saved,
+    });
+
+    return saved;
   }
 }

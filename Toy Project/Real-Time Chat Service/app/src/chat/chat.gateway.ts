@@ -164,6 +164,54 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     }
   }
 
+  @SubscribeMessage('editMessage')
+  async handleEditMessage(
+    @MessageBody() data: { messageId: string; content: string; roomId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const userId = client.data.user?.sub;
+      if (!userId || !userId.startsWith('guest_')) {
+        return { status: 'error', message: 'Only guest users are allowed' };
+      }
+
+      const updated = await this.chatService.updateMessage(data.messageId, userId, data.content);
+      // broadcast to room
+      if (data.roomId) {
+        this.server.to(data.roomId).emit('messageUpdated', updated);
+      } else if ((updated as any)?.room) {
+        this.server.to((updated as any).room).emit('messageUpdated', updated);
+      }
+      return { status: 'success', data: updated };
+    } catch (error: any) {
+      this.logger.error('Edit message error:', error);
+      return { status: 'error', message: error.message };
+    }
+  }
+
+  @SubscribeMessage('deleteMessage')
+  async handleDeleteMessage(
+    @MessageBody() data: { messageId: string; roomId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const userId = client.data.user?.sub;
+      if (!userId || !userId.startsWith('guest_')) {
+        return { status: 'error', message: 'Only guest users are allowed' };
+      }
+
+      await this.chatService.deleteMessage(data.messageId, userId);
+      // broadcast deletion to room
+      if (data.roomId) {
+        this.server.to(data.roomId).emit('messageDeleted', { messageId: data.messageId, roomId: data.roomId });
+      }
+      return { status: 'success' };
+    } catch (error: any) {
+      this.logger.error('Delete message error (WS):', error);
+      return { status: 'error', message: error.message };
+    }
+  }
+
   @SubscribeMessage('joinRoom')
   async handleJoinRoom(
     @MessageBody() data: { roomId: string },

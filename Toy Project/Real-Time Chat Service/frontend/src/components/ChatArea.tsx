@@ -17,6 +17,10 @@ import {
   Send as SendIcon,
   Refresh as RefreshIcon,
   EmojiEmotions as EmojiIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Check as CheckIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { format, isToday, isYesterday } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -37,6 +41,8 @@ interface Message {
   room: string;
   type: string;
   createdAt: string;
+  edited?: boolean;
+  editedAt?: string;
   readBy: string[];
   tempId?: string;
   isPending?: boolean;
@@ -54,7 +60,7 @@ interface ChatAreaProps {
 const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, loading = false, fetching = false }) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { sendMessage, markAsRead } = useSocket();
+  const { sendMessage, markAsRead, editMessage: wsEditMessage, deleteMessage: wsDeleteMessage } = useSocket();
   const [inputValue, setInputValue] = useState('');
   // typing indicator removed
   const [allMessages, setAllMessages] = useState<Message[]>([]);
@@ -67,10 +73,28 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const activeRoomId = room?._id || roomId;
   const [isSwitching, setIsSwitching] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState<string>('');
   // unread/new-message divider removed; lastSeen tracking not used
   const loadCooldownUntilRef = useRef<number>(0);
   const autoScrollRef = useRef<boolean>(true);
   const NEAR_BOTTOM_PX = 120;
+
+  const forceScrollToBottom = () => {
+    const doScroll = () => {
+      const container = messagesContainerRef.current;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    };
+    // Immediate
+    doScroll();
+    // After layout
+    requestAnimationFrame(() => doScroll());
+    // After async renders (images/fonts/layout)
+    setTimeout(doScroll, 50);
+    setTimeout(doScroll, 120);
+  };
 
   const isNearBottomNow = () => {
     const container = messagesContainerRef.current;
@@ -138,8 +162,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
       setShouldScrollToBottom(true);
       setIsUserScrolling(false);
       markAsRead(activeRoomId);
-      // DOM 반영 직후 하단으로 강제 스크롤
-      setTimeout(() => scrollToBottomImmediate(), 0);
+      // DOM 반영 직후 하단으로 강제 스크롤(여러 번 보장)
+      forceScrollToBottom();
     }
     // cleanup 제거: lastSeenAt 미사용
     return () => {};
@@ -147,10 +171,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
 
   // 전환이 끝나면 스피너 해제: 첫 로딩이 끝나면 해제
   useEffect(() => {
-    if (!loading) {
+    if (!loading && !fetching && isSwitching) {
+      forceScrollToBottom();
       setIsSwitching(false);
     }
-  }, [loading]);
+  }, [loading, fetching, isSwitching]);
 
   // 과거 메시지 로드 함수
   const loadMoreMessages = useCallback(async () => {
@@ -247,6 +272,32 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
       setShouldScrollToBottom(true);
       setIsUserScrolling(false);
     }
+  };
+
+  const startEdit = (message: any) => {
+    setEditingMessageId(message._id);
+    setEditingValue(message.content);
+  };
+
+  const cancelEdit = () => {
+    setEditingMessageId(null);
+    setEditingValue('');
+  };
+
+  const submitEdit = () => {
+    if (!editingMessageId || !activeRoomId) return;
+    const content = editingValue.trim();
+    if (!content) return;
+    wsEditMessage(editingMessageId, activeRoomId, content);
+    setEditingMessageId(null);
+    setEditingValue('');
+  };
+
+  const confirmAndDelete = (message: any) => {
+    if (!activeRoomId) return;
+    const ok = window.confirm('이 메시지를 삭제하시겠습니까?');
+    if (!ok) return;
+    wsDeleteMessage(message._id, activeRoomId);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -511,23 +562,78 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
                                   border: group.sender !== user?.id ? '1px solid' : 'none',
                                   borderColor: 'divider',
                                   position: 'relative',
+                                  '& .message-actions': {
+                                    opacity: 0,
+                                    visibility: 'hidden',
+                                    transition: 'opacity .15s ease',
+                                  },
+                                  '&:hover .message-actions': {
+                                    opacity: 1,
+                                    visibility: 'visible',
+                                  },
                                   '&:hover': {
                                     boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
                                   }
                                 }}
                               >
-                                <Typography 
-                                  variant="body1" 
-                                  sx={{ 
-                                    whiteSpace: 'pre-wrap',
-                                    wordBreak: 'break-word',
-                                    lineHeight: 1.5
-                                  }}
-                                >
-                                  {message.content}
-                                </Typography>
-                              </Paper>
-                            ))}
+                                {editingMessageId === message._id ? (
+                                  <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
+                                    <TextField
+                                      fullWidth
+                                      multiline
+                                      maxRows={6}
+                                      value={editingValue}
+                                      onChange={(e) => setEditingValue(e.target.value)}
+                                      variant="standard"
+                                      InputProps={{
+                                        sx: {
+                                          color: group.sender === user?.id ? 'primary.contrastText' : 'text.primary',
+                                        }
+                                      }}
+                                    />
+                                    <IconButton size="small" onClick={submitEdit} aria-label="저장" sx={{ color: group.sender === user?.id ? 'primary.contrastText' : 'text.primary' }}>
+                                      <CheckIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton size="small" onClick={cancelEdit} aria-label="취소" sx={{ color: group.sender === user?.id ? 'primary.contrastText' : 'text.primary' }}>
+                                      <CloseIcon fontSize="small" />
+                                    </IconButton>
+                                  </Box>
+                                ) : (
+                                  <>
+                                    <Typography 
+                                      variant="body1" 
+                                      sx={{ 
+                                        whiteSpace: 'pre-wrap',
+                                        wordBreak: 'break-word',
+                                        lineHeight: 1.5
+                                      }}
+                                    >
+                                      {message.content}
+                                    </Typography>
+                                    {message.edited && (
+                                      <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                                        (수정됨)
+                                      </Typography>
+                                    )}
+                                    {/* My message actions */}
+                                    {group.sender === user?.id && (
+                              <Box className="message-actions" sx={{ position: 'absolute', top: 4, right: 6, display: 'flex', gap: 0.5 }}>
+                                <Tooltip title="수정">
+                                  <IconButton size="small" onClick={() => startEdit(message)} sx={{ color: group.sender === user?.id ? 'primary.contrastText' : 'text.secondary' }}>
+                                    <EditIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="삭제">
+                                  <IconButton size="small" onClick={() => confirmAndDelete(message)} sx={{ color: group.sender === user?.id ? 'primary.contrastText' : 'text.secondary' }}>
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </Box>
+                            )}
+                          </>
+                        )}
+                      </Paper>
+                    ))}
                             
                             {/* Timestamp */}
                             <Box sx={{ 
