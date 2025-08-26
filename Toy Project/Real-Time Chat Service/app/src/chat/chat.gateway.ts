@@ -157,6 +157,20 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       // Send message to room members
       this.server.to(createMessageDto.room).emit('newMessage', message);
 
+      // Broadcast room last message update to all clients (for lobby/room list)
+      try {
+        this.server.emit('roomUpdated', {
+          roomId: createMessageDto.room,
+          lastMessage: {
+            _id: (message as any)._id,
+            content: (message as any).content,
+            sender: (message as any).sender,
+            senderUsername: (message as any).senderUsername,
+            createdAt: (message as any).createdAt,
+          },
+        });
+      } catch {}
+
       return { status: 'success', data: message };
     } catch (error) {
       this.logger.error('Send message error:', error);
@@ -214,6 +228,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
             createdAt: (result.newLastMessage as any).createdAt,
           } : null,
         });
+        // Also notify all clients to refresh the room preview
+        try {
+          this.server.emit('roomUpdated', {
+            roomId: data.roomId,
+            lastMessage: result?.newLastMessage ? {
+              _id: (result.newLastMessage as any)._id,
+              content: (result.newLastMessage as any).content,
+              sender: (result.newLastMessage as any).sender,
+              senderUsername: (result.newLastMessage as any).senderUsername,
+              createdAt: (result.newLastMessage as any).createdAt,
+            } : null,
+          });
+        } catch {}
       }
       return { status: 'success', data: result };
     } catch (error: any) {

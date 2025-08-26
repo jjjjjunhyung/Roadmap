@@ -135,6 +135,23 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         });
       });
 
+      // Global room lastMessage updates (even when not joined)
+      newSocket.on('roomUpdated', ({ roomId, lastMessage }: any) => {
+        queryClient.setQueryData('rooms', (oldData: any) => {
+          if (!oldData || !Array.isArray(oldData)) return oldData;
+          const updated = oldData.map((room: any) => {
+            if (room._id !== roomId) return room;
+            return {
+              ...room,
+              lastMessage: lastMessage ? { ...lastMessage } : null,
+              updatedAt: (lastMessage?.createdAt) || new Date().toISOString(),
+            };
+          });
+          updated.sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+          return updated;
+        });
+      });
+
       newSocket.on('messageUpdated', (message: any) => {
         // Update specific message in cache
         const roomId = message.room;
