@@ -10,6 +10,8 @@ import {
   Request,
   Delete,
   ForbiddenException,
+  DefaultValuePipe,
+  ParseIntPipe,
 } from '@nestjs/common';
 
 import { ChatService } from './chat.service';
@@ -55,10 +57,11 @@ export class ChatController {
   @Get('rooms/:roomId/messages')
   async getRoomMessages(
     @Param('roomId') roomId: string,
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 50,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('before') before?: string,
   ) {
-    return this.chatService.getRoomMessages(roomId, page, limit);
+    return this.chatService.getRoomMessages(roomId, { page, limit, before });
   }
 
   @Delete('messages/:messageId')

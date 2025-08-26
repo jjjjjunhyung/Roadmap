@@ -44,7 +44,7 @@ const ChatPage: React.FC = () => {
     'rooms',
     () => axios.get(`${API_URL}/chat/rooms`).then(res => res.data),
     {
-      refetchInterval: 10000,
+      refetchOnWindowFocus: true,
     }
   );
 
@@ -145,12 +145,6 @@ const ChatPage: React.FC = () => {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 700 }}>
             채팅 서비스
           </Typography>
-          
-          {selectedRoom && (
-            <Typography variant="subtitle1" sx={{ mr: 2, color: 'text.secondary' }}>
-              {selectedRoom.name}
-            </Typography>
-          )}
           
           {!isMobile && currentRoom && (
             <IconButton

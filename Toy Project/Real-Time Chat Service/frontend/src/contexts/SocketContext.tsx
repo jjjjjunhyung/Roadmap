@@ -117,21 +117,18 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         // 방 목록 미리보기 동기화: lastMessage 및 updatedAt 갱신
         queryClient.setQueryData('rooms', (oldData: any) => {
           if (!oldData || !Array.isArray(oldData)) return oldData;
-          const updated = oldData.map((room: any) => {
-            if (room._id !== message.room) return room;
-            // set full lastMessage with _id to ensure later delete/update checks work
-            const lm = {
-              _id: message._id,
-              content: message.content,
-              sender: message.sender,
-              senderUsername: message.senderUsername,
-              createdAt: message.createdAt,
-            };
-            return { ...room, lastMessage: lm, updatedAt: message.createdAt || new Date().toISOString() };
-          });
-          // 최신 메시지가 있는 방이 위로 오도록 정렬
-          updated.sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-          return updated;
+          const idx = oldData.findIndex((r: any) => r._id === message.room);
+          if (idx === -1) return oldData;
+          const room = oldData[idx];
+          const lm = {
+            _id: message._id,
+            content: message.content,
+            sender: message.sender,
+            senderUsername: message.senderUsername,
+            createdAt: message.createdAt,
+          };
+          const updatedRoom = { ...room, lastMessage: lm, updatedAt: message.createdAt || new Date().toISOString() };
+          return [updatedRoom, ...oldData.slice(0, idx), ...oldData.slice(idx + 1)];
         });
       });
 
@@ -139,16 +136,16 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       newSocket.on('roomUpdated', ({ roomId, lastMessage }: any) => {
         queryClient.setQueryData('rooms', (oldData: any) => {
           if (!oldData || !Array.isArray(oldData)) return oldData;
-          const updated = oldData.map((room: any) => {
-            if (room._id !== roomId) return room;
-            return {
-              ...room,
-              lastMessage: lastMessage ? { ...lastMessage } : null,
-              updatedAt: (lastMessage?.createdAt) || new Date().toISOString(),
-            };
-          });
-          updated.sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-          return updated;
+          const idx = oldData.findIndex((r: any) => r._id === roomId);
+          if (idx === -1) return oldData;
+          const room = oldData[idx];
+          const updatedAt = (lastMessage?.createdAt) || new Date().toISOString();
+          const updatedRoom = {
+            ...room,
+            lastMessage: lastMessage ? { ...lastMessage } : null,
+            updatedAt,
+          };
+          return [updatedRoom, ...oldData.slice(0, idx), ...oldData.slice(idx + 1)];
         });
       });
 
@@ -192,29 +189,28 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         // If deleted was the lastMessage, conservatively clear preview content
         queryClient.setQueryData('rooms', (oldData: any) => {
           if (!oldData || !Array.isArray(oldData)) return oldData;
-          const updated = oldData.map((room: any) => {
-            if (room._id !== roomId) return room;
-            const currentLM: any = room.lastMessage || null;
-            const shouldReplace = (
-              !currentLM ||
-              (currentLM && (currentLM as any)._id === messageId) ||
-              (newLastMessage && currentLM?.createdAt && new Date(currentLM.createdAt).getTime() <= new Date(newLastMessage.createdAt).getTime())
-            );
-            if (shouldReplace) {
-              if (newLastMessage) {
-                return {
-                  ...room,
-                  lastMessage: { ...newLastMessage },
-                  updatedAt: newLastMessage.createdAt || room.updatedAt,
-                };
-              }
-              return { ...room, lastMessage: null, updatedAt: new Date().toISOString() };
+          const idx = oldData.findIndex((r: any) => r._id === roomId);
+          if (idx === -1) return oldData;
+          const room = oldData[idx];
+          const currentLM: any = room.lastMessage || null;
+          const shouldReplace = (
+            !currentLM ||
+            (currentLM && (currentLM as any)._id === messageId) ||
+            (newLastMessage && currentLM?.createdAt && new Date(currentLM.createdAt).getTime() <= new Date(newLastMessage.createdAt).getTime())
+          );
+          let updatedRoom = room;
+          if (shouldReplace) {
+            if (newLastMessage) {
+              updatedRoom = {
+                ...room,
+                lastMessage: { ...newLastMessage },
+                updatedAt: newLastMessage.createdAt || room.updatedAt,
+              };
+            } else {
+              updatedRoom = { ...room, lastMessage: null, updatedAt: new Date().toISOString() };
             }
-            return room;
-          });
-          // keep rooms ordered by updatedAt desc
-          updated.sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-          return updated;
+          }
+          return [updatedRoom, ...oldData.slice(0, idx), ...oldData.slice(idx + 1)];
         });
       });
 

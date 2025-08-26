@@ -43,3 +43,5 @@ export class Message {
 }
 
 export const MessageSchema = SchemaFactory.createForClass(Message);
+// Indexes for common query patterns
+MessageSchema.index({ room: 1, createdAt: -1 });

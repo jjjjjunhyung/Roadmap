@@ -42,15 +42,33 @@ export class ChatService {
     return savedMessage;
   }
 
-  async getRoomMessages(roomId: string, page: number = 1, limit: number = 50): Promise<MessageDocument[]> {
-    const skip = (page - 1) * limit;
-    
-    return this.messageModel
-      .find({ room: roomId })
+  async getRoomMessages(
+    roomId: string,
+    options: { page?: number; limit?: number; before?: string } = {}
+  ): Promise<any[]> {
+    const { page = 1, limit = 50, before } = options;
+
+    const query: any = { room: roomId };
+    if (before) {
+      const beforeDate = new Date(before);
+      if (!isNaN(beforeDate.getTime())) {
+        query.createdAt = { $lt: beforeDate };
+      }
+    }
+
+    let q = this.messageModel
+      .find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
-      .skip(skip)
-      .exec();
+      .select('_id content sender senderUsername senderAvatar room type createdAt edited editedAt readBy')
+      .lean();
+
+    if (!before) {
+      const skip = (page - 1) * limit;
+      q = q.skip(skip);
+    }
+
+    return q.exec();
   }
 
   async createRoom(createRoomDto: CreateRoomDto, ownerId: string): Promise<RoomDocument> {
@@ -68,12 +86,13 @@ export class ChatService {
     return savedRoom;
   }
 
-  async getRooms(userId: string): Promise<RoomDocument[]> {
+  async getRooms(userId: string): Promise<any[]> {
     // Return all public rooms for guest users
     const rooms = await this.roomModel
       .find({ type: 'public' })
-      .populate({ path: 'lastMessage', select: 'content createdAt sender senderUsername' })
+      .populate({ path: 'lastMessage', select: '_id content createdAt sender senderUsername' })
       .sort({ updatedAt: -1 })
+      .lean()
       .exec();
 
     return rooms.filter(room => room && room.name);
@@ -116,7 +135,7 @@ export class ChatService {
     });
   }
 
-  async deleteMessage(messageId: string, userId: string): Promise<{ roomId: string; newLastMessage: MessageDocument | null }> {
+  async deleteMessage(messageId: string, userId: string): Promise<{ roomId: string; newLastMessage: any | null }> {
     const message = await this.messageModel.findById(messageId);
     if (!message) {
       throw new NotFoundException('Message not found');
@@ -136,6 +155,7 @@ export class ChatService {
     const latest = await this.messageModel
       .findOne({ room: message.room })
       .sort({ createdAt: -1 })
+      .lean()
       .exec();
 
     await this.roomModel.findByIdAndUpdate(message.room, {

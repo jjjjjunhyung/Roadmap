@@ -38,3 +38,6 @@ export class Room {
 }
 
 export const RoomSchema = SchemaFactory.createForClass(Room);
+// Indexes for filtering and ordering rooms
+RoomSchema.index({ type: 1, updatedAt: -1 });
+RoomSchema.index({ updatedAt: -1 });

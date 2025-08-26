@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useQueryClient } from 'react-query';
 import {
   Box,
@@ -64,7 +64,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
   const [inputValue, setInputValue] = useState('');
   // typing indicator removed
   const [allMessages, setAllMessages] = useState<Message[]>([]);
-  const [page, setPage] = useState(1);
+  // keyset pagination: we use 'before' cursor instead of page/skip
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -157,7 +157,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
       // 캐시된 메시지가 있으면 즉시 표시해 깜빡임 방지
       const cached = (queryClient.getQueryData(['messages', activeRoomId]) as Message[] | undefined) || [];
       setAllMessages(cached);
-      setPage(1);
+      // reset keyset paging state
       setHasMore(true);
       setShouldScrollToBottom(true);
       setIsUserScrolling(false);
@@ -205,9 +205,15 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
 
     setIsLoadingMore(true);
     try {
-      const response = await axios.get(
-        `${API_URL}/chat/rooms/${activeRoomId}/messages?page=${page + 1}&limit=${PAGE_SIZE}`
-      );
+      // 키셋 페이지네이션: 현재 보유 중인 메시지 중 가장 오래된 createdAt 이전 데이터 요청
+      const current: Message[] = (allMessages && allMessages.length > 0) ? allMessages : (messages || []);
+      const oldestTs = current.length > 0
+        ? new Date(Math.min(...current.map(m => new Date(m.createdAt).getTime()))).toISOString()
+        : undefined;
+      const url = oldestTs
+        ? `${API_URL}/chat/rooms/${activeRoomId}/messages?before=${encodeURIComponent(oldestTs)}&limit=${PAGE_SIZE}`
+        : `${API_URL}/chat/rooms/${activeRoomId}/messages?limit=${PAGE_SIZE}`;
+      const response = await axios.get(url);
       const olderMessages = response.data;
 
       if (!Array.isArray(olderMessages)) {
@@ -227,8 +233,6 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
           const newOlderMessages = olderMessages.filter((m: Message) => !existingIds.has(m._id));
           return [...newOlderMessages, ...prevMessages];
         });
-        
-        setPage(prevPage => prevPage + 1);
         // 마지막 페이지 추정: 페이지 크기 미만이면 더 없음
         if (olderMessages.length < PAGE_SIZE) {
           setHasMore(false);
@@ -252,7 +256,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
     } finally {
       setIsLoadingMore(false);
     }
-  }, [activeRoomId, page, isLoadingMore, hasMore]);
+  }, [activeRoomId, isLoadingMore, hasMore]);
 
   // 스크롤 이벤트 핸들러
   const handleScroll = useCallback(() => {
@@ -358,52 +362,38 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
   // 화면에 사용할 소스: allMessages가 있으면 우선 사용, 없으면 props.messages 사용
   const sourceMessages: Message[] = (allMessages && allMessages.length > 0) ? allMessages : (messages || []);
 
-  // 메시지를 시간 순으로 정렬 (오래된 것부터)
-  const sortedMessages = [...sourceMessages].sort((a, b) => 
-    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-  );
+  // 메시지를 시간 순으로 정렬 (오래된 것부터) - 메모이즈
+  const sortedMessages = useMemo(() => {
+    return [...sourceMessages].sort((a, b) =>
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  }, [sourceMessages]);
 
-  const groupedMessages = sortedMessages.reduce((groups: any[], message, index) => {
-    const prevMessage = sortedMessages[index - 1];
-    const shouldGroup = prevMessage && 
-      prevMessage.sender === message.sender && 
-      new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime() < 60000;
-    
-    if (shouldGroup) {
-      groups[groups.length - 1].messages.push(message);
-    } else {
-      groups.push({
-        sender: message.sender,
-        senderUsername: message.senderUsername,
-        senderAvatar: message.senderAvatar,
-        timestamp: message.createdAt,
-        messages: [message]
-      });
-    }
-    return groups;
-  }, []);
-
-  // 실제 메시지만 사용 - 테스트 메시지 제거
+  // 실제 메시지만 사용 - 테스트 메시지 제거(현재는 그대로 사용)
   const displayMessages = sortedMessages;
-  const displayGroupedMessages = displayMessages.reduce((groups: any[], message, index) => {
-    const prevMessage = displayMessages[index - 1];
-    const shouldGroup = prevMessage && 
-      prevMessage.sender === message.sender && 
-      new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime() < 60000;
-    
-    if (shouldGroup) {
-      groups[groups.length - 1].messages.push(message);
-    } else {
-      groups.push({
-        sender: message.sender,
-        senderUsername: message.senderUsername,
-        senderAvatar: message.senderAvatar,
-        timestamp: message.createdAt,
-        messages: [message]
-      });
-    }
-    return groups;
-  }, []);
+
+  // 연속 메시지 그룹핑 계산 - 메모이즈
+  const displayGroupedMessages = useMemo(() => {
+    return displayMessages.reduce((groups: any[], message, index) => {
+      const prevMessage = displayMessages[index - 1];
+      const shouldGroup = prevMessage &&
+        prevMessage.sender === message.sender &&
+        new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime() < 60000;
+
+      if (shouldGroup) {
+        groups[groups.length - 1].messages.push(message);
+      } else {
+        groups.push({
+          sender: message.sender,
+          senderUsername: message.senderUsername,
+          senderAvatar: message.senderAvatar,
+          timestamp: message.createdAt,
+          messages: [message]
+        });
+      }
+      return groups;
+    }, [] as any[]);
+  }, [displayMessages]);
 
   
 
