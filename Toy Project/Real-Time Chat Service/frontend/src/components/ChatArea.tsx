@@ -592,6 +592,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
                                   border: group.sender !== user?.id ? '1px solid' : 'none',
                                   borderColor: 'divider',
                                   position: 'relative',
+                                  overflow: 'visible',
                                   '& .message-actions': {
                                     opacity: 0,
                                     visibility: 'hidden',
@@ -600,6 +601,18 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
                                   '&:hover .message-actions': {
                                     opacity: 1,
                                     visibility: 'visible',
+                                  },
+                                  '& .message-actions:hover': {
+                                    opacity: 1,
+                                    visibility: 'visible',
+                                  },
+                                  '&:before': {
+                                    content: '""',
+                                    position: 'absolute',
+                                    top: 0,
+                                    bottom: 0,
+                                    left: '-8px',
+                                    width: '8px',
                                   },
                                   '&:hover': {
                                     boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
@@ -647,14 +660,25 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
                                     )}
                                     {/* My message actions */}
                                     {group.sender === user?.id && (
-                              <Box className="message-actions" sx={{ position: 'absolute', top: 4, right: 6, display: 'flex', gap: 0.5 }}>
+                              <Box
+                                className="message-actions"
+                                sx={{
+                                  position: 'absolute',
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  right: 'calc(100% + 8px)',
+                                  display: 'flex',
+                                  gap: 0.25,
+                                  alignItems: 'center',
+                                }}
+                              >
                                 <Tooltip title="수정">
-                                  <IconButton size="small" onClick={() => startEdit(message)} sx={{ color: group.sender === user?.id ? 'primary.contrastText' : 'text.secondary' }}>
+                                  <IconButton size="small" onClick={() => startEdit(message)} sx={{ color: 'primary.main' }}>
                                     <EditIcon fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
                                 <Tooltip title="삭제">
-                                  <IconButton size="small" onClick={() => confirmAndDelete(message)} sx={{ color: group.sender === user?.id ? 'primary.contrastText' : 'text.secondary' }}>
+                                  <IconButton size="small" onClick={() => confirmAndDelete(message)} sx={{ color: 'primary.main' }}>
                                     <DeleteIcon fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
