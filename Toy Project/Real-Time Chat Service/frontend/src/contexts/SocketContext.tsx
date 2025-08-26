@@ -81,6 +81,9 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       newSocket.on('disconnect', () => {
         console.log('소켓 연결 해제됨');
         setConnected(false);
+        setRoomOnlineUsers([]);
+        currentRoomRef.current = null;
+        setCurrentRoom(null);
       });
 
       // 인증/연결 관련 에러 처리: 만료/서명 오류 시 세션 정리
@@ -216,12 +219,20 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
       // 전역 온라인 사용자 목록은 현재 UI에서 사용하지 않으므로 제거
 
-      newSocket.on('userJoinedRoom', ({ userId, roomId }) => {
-        console.log(`User ${userId} joined room ${roomId}`);
+      newSocket.on('userJoinedRoom', ({ userId, roomId, username }) => {
+        if (currentRoomRef.current === roomId) {
+          setRoomOnlineUsers(prev => {
+            const exists = prev.some(u => u.userId === userId);
+            if (exists) return prev;
+            return [...prev, { userId, username: username || userId }];
+          });
+        }
       });
 
       newSocket.on('userLeftRoom', ({ userId, roomId }) => {
-        console.log(`User ${userId} left room ${roomId}`);
+        if (currentRoomRef.current === roomId) {
+          setRoomOnlineUsers(prev => prev.filter(u => u.userId !== userId));
+        }
       });
 
       newSocket.on('messagesRead', ({ userId, roomId }) => {
@@ -255,8 +266,11 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       if (socket) {
         socket.close();
         setSocket(null);
-        setConnected(false);
       }
+      setConnected(false);
+      setRoomOnlineUsers([]);
+      currentRoomRef.current = null;
+      setCurrentRoom(null);
     }
   }, [user, token]);
 
@@ -310,6 +324,13 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     }
   };
 
+  // ensure ref updates before async events land
+  const setCurrentRoomSafe = (roomId: string | null) => {
+    setCurrentRoom(roomId);
+    currentRoomRef.current = roomId;
+    if (!roomId) setRoomOnlineUsers([]);
+  };
+
   const value = {
     socket,
     connected,
@@ -320,7 +341,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     deleteMessage,
     joinRoom,
     leaveRoom,
-    setCurrentRoom,
+    setCurrentRoom: setCurrentRoomSafe,
     markAsRead,
   };
 

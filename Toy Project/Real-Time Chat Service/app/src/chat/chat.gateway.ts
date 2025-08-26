@@ -137,6 +137,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
         status: 'offline',
         isGuest: true,
       });
+
+      // Also notify per-room listeners that the user left (on disconnect)
+      try {
+        joinedRooms.forEach((roomId: string) => {
+          this.server.to(roomId).emit('userLeftRoom', {
+            userId: userInfo.userId,
+            roomId,
+          });
+        });
+      } catch (e) {
+        this.logger.warn(`Failed to emit userLeftRoom on disconnect: ${e?.message || e}`);
+      }
     }
   }
 
@@ -268,11 +280,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       if (!client.data.rooms) client.data.rooms = new Set<string>();
       client.data.rooms.add(data.roomId);
 
-      await this.incrementRoomMemberRedis(data.roomId, userId, client.data.user?.username || (userId?.split('_')[2]) || 'Guest');
-
+      const username = client.data.user?.username || (userId?.split('_')[2]) || 'Guest';
+      await this.incrementRoomMemberRedis(data.roomId, userId, username);
+      
       client.to(data.roomId).emit('userJoinedRoom', {
         userId,
         roomId: data.roomId,
+        username,
       });
 
       // emit fresh room user list to all in the room (including self)
