@@ -119,17 +119,15 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
           if (!oldData || !Array.isArray(oldData)) return oldData;
           const updated = oldData.map((room: any) => {
             if (room._id !== message.room) return room;
-            return {
-              ...room,
-              lastMessage: {
-                ...(room.lastMessage || {}),
-                content: message.content,
-                sender: message.sender,
-                senderUsername: message.senderUsername,
-                createdAt: message.createdAt,
-              },
-              updatedAt: message.createdAt || new Date().toISOString(),
+            // set full lastMessage with _id to ensure later delete/update checks work
+            const lm = {
+              _id: message._id,
+              content: message.content,
+              sender: message.sender,
+              senderUsername: message.senderUsername,
+              createdAt: message.createdAt,
             };
+            return { ...room, lastMessage: lm, updatedAt: message.createdAt || new Date().toISOString() };
           });
           // 최신 메시지가 있는 방이 위로 오도록 정렬
           updated.sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
@@ -150,7 +148,17 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
           const updated = oldData.map((room: any) => {
             if (room._id !== roomId) return room;
             if (room.lastMessage && (room.lastMessage as any)?._id === message._id) {
-              return { ...room, lastMessage: { ...(room.lastMessage as any), content: message.content }, updatedAt: message.editedAt || room.updatedAt };
+              return { 
+                ...room, 
+                lastMessage: { 
+                  _id: message._id,
+                  content: message.content,
+                  sender: message.sender,
+                  senderUsername: message.senderUsername,
+                  createdAt: message.createdAt,
+                },
+                updatedAt: message.editedAt || room.updatedAt 
+              };
             }
             return room;
           });
@@ -158,7 +166,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         });
       });
 
-      newSocket.on('messageDeleted', ({ messageId, roomId }: any) => {
+      newSocket.on('messageDeleted', ({ messageId, roomId, newLastMessage }: any) => {
         // Remove message from cache
         queryClient.setQueryData(['messages', roomId], (oldData: any) => {
           const prev = Array.isArray(oldData) ? oldData : [];
@@ -169,11 +177,26 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
           if (!oldData || !Array.isArray(oldData)) return oldData;
           const updated = oldData.map((room: any) => {
             if (room._id !== roomId) return room;
-            if ((room.lastMessage as any)?._id === messageId) {
-              return { ...room, lastMessage: { ...(room.lastMessage as any), content: '' } };
+            const currentLM: any = room.lastMessage || null;
+            const shouldReplace = (
+              !currentLM ||
+              (currentLM && (currentLM as any)._id === messageId) ||
+              (newLastMessage && currentLM?.createdAt && new Date(currentLM.createdAt).getTime() <= new Date(newLastMessage.createdAt).getTime())
+            );
+            if (shouldReplace) {
+              if (newLastMessage) {
+                return {
+                  ...room,
+                  lastMessage: { ...newLastMessage },
+                  updatedAt: newLastMessage.createdAt || room.updatedAt,
+                };
+              }
+              return { ...room, lastMessage: null, updatedAt: new Date().toISOString() };
             }
             return room;
           });
+          // keep rooms ordered by updatedAt desc
+          updated.sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
           return updated;
         });
       });

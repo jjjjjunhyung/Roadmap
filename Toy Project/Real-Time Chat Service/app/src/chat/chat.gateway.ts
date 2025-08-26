@@ -200,12 +200,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
         return { status: 'error', message: 'Only guest users are allowed' };
       }
 
-      await this.chatService.deleteMessage(data.messageId, userId);
-      // broadcast deletion to room
+      const result = await this.chatService.deleteMessage(data.messageId, userId);
+      // broadcast deletion to room with new last message info
       if (data.roomId) {
-        this.server.to(data.roomId).emit('messageDeleted', { messageId: data.messageId, roomId: data.roomId });
+        this.server.to(data.roomId).emit('messageDeleted', { 
+          messageId: data.messageId, 
+          roomId: data.roomId,
+          newLastMessage: result?.newLastMessage ? {
+            _id: (result.newLastMessage as any)._id,
+            content: (result.newLastMessage as any).content,
+            sender: (result.newLastMessage as any).sender,
+            senderUsername: (result.newLastMessage as any).senderUsername,
+            createdAt: (result.newLastMessage as any).createdAt,
+          } : null,
+        });
       }
-      return { status: 'success' };
+      return { status: 'success', data: result };
     } catch (error: any) {
       this.logger.error('Delete message error (WS):', error);
       return { status: 'error', message: error.message };

@@ -60,7 +60,7 @@ interface ChatAreaProps {
 const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, loading = false, fetching = false }) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { sendMessage, markAsRead, editMessage: wsEditMessage, deleteMessage: wsDeleteMessage } = useSocket();
+  const { socket, sendMessage, markAsRead, editMessage: wsEditMessage, deleteMessage: wsDeleteMessage } = useSocket();
   const [inputValue, setInputValue] = useState('');
   // typing indicator removed
   const [allMessages, setAllMessages] = useState<Message[]>([]);
@@ -168,6 +168,25 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
     // cleanup 제거: lastSeenAt 미사용
     return () => {};
   }, [activeRoomId, markAsRead, queryClient]);
+
+  // 실시간 삭제/수정 이벤트에 로컬 상태 동기화 (다른 사용자 액션 포함)
+  useEffect(() => {
+    if (!socket) return;
+    const handleDeleted = ({ messageId, roomId }: any) => {
+      if (!activeRoomId || roomId !== activeRoomId) return;
+      setAllMessages(prev => prev.filter(m => m._id !== messageId));
+    };
+    const handleUpdated = (message: any) => {
+      if (!activeRoomId || message.room !== activeRoomId) return;
+      setAllMessages(prev => prev.map(m => (m._id === message._id ? { ...m, ...message } : m)));
+    };
+    socket.on('messageDeleted', handleDeleted);
+    socket.on('messageUpdated', handleUpdated);
+    return () => {
+      socket.off('messageDeleted', handleDeleted);
+      socket.off('messageUpdated', handleUpdated);
+    };
+  }, [socket, activeRoomId]);
 
   // 전환이 끝나면 스피너 해제: 첫 로딩이 끝나면 해제
   useEffect(() => {
@@ -297,7 +316,28 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
     if (!activeRoomId) return;
     const ok = window.confirm('이 메시지를 삭제하시겠습니까?');
     if (!ok) return;
-    wsDeleteMessage(message._id, activeRoomId);
+    // Optimistic removal from local state and query cache
+    const id = message._id;
+    try {
+      setAllMessages(prev => prev.filter((m) => m._id !== id));
+      queryClient.setQueryData(['messages', activeRoomId], (oldData: any) => {
+        const prev = Array.isArray(oldData) ? oldData : [];
+        return prev.filter((m: any) => m._id !== id);
+      });
+      // Optimistically clear room preview if it points to this message
+      queryClient.setQueryData('rooms', (oldData: any) => {
+        if (!oldData || !Array.isArray(oldData)) return oldData;
+        const updated = oldData.map((room: any) => {
+          if (room._id !== activeRoomId) return room;
+          if ((room.lastMessage as any)?._id === id) {
+            return { ...room, lastMessage: null };
+          }
+          return room;
+        });
+        return updated;
+      });
+    } catch {}
+    wsDeleteMessage(id, activeRoomId);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {

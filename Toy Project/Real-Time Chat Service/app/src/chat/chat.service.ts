@@ -116,7 +116,7 @@ export class ChatService {
     });
   }
 
-  async deleteMessage(messageId: string, userId: string): Promise<void> {
+  async deleteMessage(messageId: string, userId: string): Promise<{ roomId: string; newLastMessage: MessageDocument | null }> {
     const message = await this.messageModel.findById(messageId);
     if (!message) {
       throw new NotFoundException('Message not found');
@@ -131,6 +131,19 @@ export class ChatService {
       type: 'message_deleted',
       data: { messageId, roomId: message.room },
     });
+
+    // Update room's last message to the latest remaining message
+    const latest = await this.messageModel
+      .findOne({ room: message.room })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    await this.roomModel.findByIdAndUpdate(message.room, {
+      lastMessage: latest ? latest._id : null,
+      updatedAt: (latest as any)?.createdAt || new Date(),
+    });
+
+    return { roomId: message.room as any, newLastMessage: latest || null };
   }
 
   async updateMessage(messageId: string, userId: string, content: string) {
