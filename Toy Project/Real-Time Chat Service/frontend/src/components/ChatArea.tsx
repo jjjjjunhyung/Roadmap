@@ -345,15 +345,31 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
       });
       // Optimistically clear room preview if it points to this message
       queryClient.setQueryData('rooms', (oldData: any) => {
-        if (!oldData || !Array.isArray(oldData)) return oldData;
-        const updated = oldData.map((room: any) => {
-          if (room._id !== activeRoomId) return room;
-          if ((room.lastMessage as any)?._id === id) {
-            return { ...room, lastMessage: null };
+        if (!oldData) return oldData;
+        if (Array.isArray(oldData)) {
+          return oldData.map((room: any) => {
+            if (room._id !== activeRoomId) return room;
+            if ((room.lastMessage as any)?._id === id) {
+              return { ...room, lastMessage: null };
+            }
+            return room;
+          });
+        }
+        if (oldData?.pages && Array.isArray(oldData.pages)) {
+          const pages = oldData.pages.map((p: any) => ({ ...p, items: Array.isArray(p?.items) ? [...p.items] : [] }));
+          for (let pi = 0; pi < pages.length; pi++) {
+            const idx = pages[pi].items.findIndex((r: any) => r?._id === activeRoomId);
+            if (idx !== -1) {
+              const room = pages[pi].items[idx];
+              if ((room.lastMessage as any)?._id === id) {
+                pages[pi].items[idx] = { ...room, lastMessage: null };
+              }
+              break;
+            }
           }
-          return room;
-        });
-        return updated;
+          return { ...oldData, pages };
+        }
+        return oldData;
       });
     } catch {}
     wsDeleteMessage(id, activeRoomId);

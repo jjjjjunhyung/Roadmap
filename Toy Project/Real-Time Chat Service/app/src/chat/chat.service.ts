@@ -84,11 +84,28 @@ export class ChatService {
     return savedRoom;
   }
 
-  async getRooms(userId: string): Promise<any[]> {
-    // Return all public rooms for guest users (use denormalized lastMessageSummary)
+  async getRooms(
+    userId: string,
+    options: { limit?: number; before?: string } = {}
+  ): Promise<any[]> {
+    // Cursor-based pagination using updatedAt
+    const { limit = 50, before } = options;
+    const effectiveLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+
+    const query: any = { type: 'public' };
+    if (before) {
+      const beforeDate = new Date(before);
+      if (!isNaN(beforeDate.getTime())) {
+        query.updatedAt = { $lt: beforeDate };
+      }
+    }
+
+    // Return only fields the UI uses (+ fallbacks)
     const rooms = await this.roomModel
-      .find({ type: 'public' })
+      .find(query)
+      .select('name description type members lastMessage lastMessageSummary updatedAt')
       .sort({ updatedAt: -1 })
+      .limit(effectiveLimit)
       .lean()
       .exec();
 

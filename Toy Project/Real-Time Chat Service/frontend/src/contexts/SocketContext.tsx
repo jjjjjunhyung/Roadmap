@@ -62,7 +62,47 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const currentRoomRef = React.useRef<string | null>(null);
   useEffect(() => { currentRoomRef.current = currentRoom; }, [currentRoom]);
   
-  
+  // Helper: update rooms cache for both array and InfiniteQuery shapes
+  const updateRoomsCache = (
+    updater: (room: any) => any,
+    roomId: string,
+    moveToFront: boolean = false,
+  ) => {
+    queryClient.setQueryData('rooms', (oldData: any) => {
+      if (!oldData) return oldData;
+      if (Array.isArray(oldData)) {
+        const idx = oldData.findIndex((r: any) => r?._id === roomId);
+        if (idx === -1) return oldData;
+        const room = oldData[idx];
+        const updatedRoom = updater(room);
+        if (moveToFront) return [updatedRoom, ...oldData.slice(0, idx), ...oldData.slice(idx + 1)];
+        return oldData.map((r: any, i: number) => (i === idx ? updatedRoom : r));
+      }
+      if (oldData?.pages && Array.isArray(oldData.pages)) {
+        const pages = oldData.pages.map((p: any) => ({ ...p, items: Array.isArray(p?.items) ? [...p.items] : [] }));
+        let foundPage = -1, foundIdx = -1;
+        for (let pi = 0; pi < pages.length; pi++) {
+          const idx = pages[pi].items.findIndex((r: any) => r?._id === roomId);
+          if (idx !== -1) { foundPage = pi; foundIdx = idx; break; }
+        }
+        if (foundPage === -1) return oldData;
+        const room = pages[foundPage].items[foundIdx];
+        const updatedRoom = updater(room);
+        // remove original
+        pages[foundPage].items.splice(foundIdx, 1);
+        if (moveToFront) {
+          pages[0].items = pages[0].items.filter((r: any) => r?._id !== roomId);
+          pages[0].items.unshift(updatedRoom);
+        } else {
+          const reinsertIdx = Math.min(foundIdx, pages[foundPage].items.length);
+          pages[foundPage].items.splice(reinsertIdx, 0, updatedRoom);
+        }
+        return { ...oldData, pages };
+      }
+      return oldData;
+    });
+  };
+
 
   useEffect(() => {
     if (user && token) {
@@ -117,39 +157,29 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
           if (exists) return prev;
           return [...prev, message];
         });
-        // 방 목록 미리보기 동기화: lastMessage 및 updatedAt 갱신
-        queryClient.setQueryData('rooms', (oldData: any) => {
-          if (!oldData || !Array.isArray(oldData)) return oldData;
-          const idx = oldData.findIndex((r: any) => r._id === message.room);
-          if (idx === -1) return oldData;
-          const room = oldData[idx];
-          const lm = {
-            _id: message._id,
-            content: message.content,
-            sender: message.sender,
-            senderUsername: message.senderUsername,
-            createdAt: message.createdAt,
-          };
-          const updatedRoom = { ...room, lastMessage: lm, updatedAt: message.createdAt || new Date().toISOString() };
-          return [updatedRoom, ...oldData.slice(0, idx), ...oldData.slice(idx + 1)];
-        });
+        // 방 목록 미리보기 동기화: lastMessage 및 updatedAt 갱신 + 선두 이동
+        const lm = {
+          _id: message._id,
+          content: message.content,
+          sender: message.sender,
+          senderUsername: message.senderUsername,
+          createdAt: message.createdAt,
+        };
+        updateRoomsCache((room: any) => ({
+          ...room,
+          lastMessage: lm,
+          updatedAt: message.createdAt || new Date().toISOString(),
+        }), message.room, true);
       });
 
       // Global room lastMessage updates (even when not joined)
       newSocket.on('roomUpdated', ({ roomId, lastMessage }: any) => {
-        queryClient.setQueryData('rooms', (oldData: any) => {
-          if (!oldData || !Array.isArray(oldData)) return oldData;
-          const idx = oldData.findIndex((r: any) => r._id === roomId);
-          if (idx === -1) return oldData;
-          const room = oldData[idx];
-          const updatedAt = (lastMessage?.createdAt) || new Date().toISOString();
-          const updatedRoom = {
-            ...room,
-            lastMessage: lastMessage ? { ...lastMessage } : null,
-            updatedAt,
-          };
-          return [updatedRoom, ...oldData.slice(0, idx), ...oldData.slice(idx + 1)];
-        });
+        const updatedAt = (lastMessage?.createdAt) || new Date().toISOString();
+        updateRoomsCache((room: any) => ({
+          ...room,
+          lastMessage: lastMessage ? { ...lastMessage } : null,
+          updatedAt,
+        }), roomId, true);
       });
 
       newSocket.on('messageUpdated', (message: any) => {
@@ -160,27 +190,22 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
           return prev.map((m: any) => (m._id === message._id ? { ...m, ...message } : m));
         });
         // Update room preview if needed
-        queryClient.setQueryData('rooms', (oldData: any) => {
-          if (!oldData || !Array.isArray(oldData)) return oldData;
-          const updated = oldData.map((room: any) => {
-            if (room._id !== roomId) return room;
-            if (room.lastMessage && (room.lastMessage as any)?._id === message._id) {
-              return { 
-                ...room, 
-                lastMessage: { 
-                  _id: message._id,
-                  content: message.content,
-                  sender: message.sender,
-                  senderUsername: message.senderUsername,
-                  createdAt: message.createdAt,
-                },
-                updatedAt: message.editedAt || room.updatedAt 
-              };
-            }
-            return room;
-          });
-          return updated;
-        });
+        updateRoomsCache((room: any) => {
+          if (room.lastMessage && (room.lastMessage as any)?._id === message._id) {
+            return {
+              ...room,
+              lastMessage: {
+                _id: message._id,
+                content: message.content,
+                sender: message.sender,
+                senderUsername: message.senderUsername,
+                createdAt: message.createdAt,
+              },
+              updatedAt: message.editedAt || room.updatedAt,
+            };
+          }
+          return room;
+        }, roomId, false);
       });
 
       newSocket.on('messageDeleted', ({ messageId, roomId, newLastMessage }: any) => {
@@ -190,31 +215,19 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
           return prev.filter((m: any) => m._id !== messageId);
         });
         // If deleted was the lastMessage, conservatively clear preview content
-        queryClient.setQueryData('rooms', (oldData: any) => {
-          if (!oldData || !Array.isArray(oldData)) return oldData;
-          const idx = oldData.findIndex((r: any) => r._id === roomId);
-          if (idx === -1) return oldData;
-          const room = oldData[idx];
+        updateRoomsCache((room: any) => {
           const currentLM: any = room.lastMessage || null;
           const shouldReplace = (
             !currentLM ||
             (currentLM && (currentLM as any)._id === messageId) ||
             (newLastMessage && currentLM?.createdAt && new Date(currentLM.createdAt).getTime() <= new Date(newLastMessage.createdAt).getTime())
           );
-          let updatedRoom = room;
-          if (shouldReplace) {
-            if (newLastMessage) {
-              updatedRoom = {
-                ...room,
-                lastMessage: { ...newLastMessage },
-                updatedAt: newLastMessage.createdAt || room.updatedAt,
-              };
-            } else {
-              updatedRoom = { ...room, lastMessage: null, updatedAt: new Date().toISOString() };
-            }
+          if (!shouldReplace) return room;
+          if (newLastMessage) {
+            return { ...room, lastMessage: { ...newLastMessage }, updatedAt: newLastMessage.createdAt || room.updatedAt };
           }
-          return [updatedRoom, ...oldData.slice(0, idx), ...oldData.slice(idx + 1)];
-        });
+          return { ...room, lastMessage: null, updatedAt: new Date().toISOString() };
+        }, roomId, true);
       });
 
       // 전역 온라인 사용자 목록은 현재 UI에서 사용하지 않으므로 제거

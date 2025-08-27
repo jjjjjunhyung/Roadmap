@@ -19,7 +19,7 @@ import {
   Person as PersonIcon,
   Chat as ChatIcon,
 } from '@mui/icons-material';
-import { useQuery } from 'react-query';
+import { useInfiniteQuery, useQuery } from 'react-query';
 import axios from 'axios';
 
 import { useSocket } from '../contexts/SocketContext';
@@ -40,13 +40,45 @@ const ChatPage: React.FC = () => {
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
 
-  const { data: rooms = [], refetch: refetchRooms } = useQuery(
+  const ROOMS_PAGE_SIZE = 50;
+  const {
+    data: roomsPages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    refetch: refetchRooms,
+  } = useInfiniteQuery(
     'rooms',
-    () => axios.get(`${API_URL}/chat/rooms`).then(res => res.data),
+    async ({ pageParam }): Promise<{ items: any[]; nextCursor: string | null }> => {
+      const url = pageParam
+        ? `${API_URL}/chat/rooms?limit=${ROOMS_PAGE_SIZE}&before=${encodeURIComponent(pageParam)}`
+        : `${API_URL}/chat/rooms?limit=${ROOMS_PAGE_SIZE}`;
+      const res = await axios.get(url);
+      const nextCursor = (res.headers && (res.headers['x-next-cursor'] as string)) || null;
+      return { items: res.data || [], nextCursor };
+    },
     {
+      getNextPageParam: (lastPage) => {
+        if (!lastPage || !Array.isArray(lastPage.items)) return undefined;
+        if (lastPage.items.length < ROOMS_PAGE_SIZE) return undefined;
+        return lastPage.nextCursor || undefined;
+      },
       refetchOnWindowFocus: true,
     }
   );
+
+  const rooms: any[] = React.useMemo(() => {
+    const flat = roomsPages?.pages.flatMap((p: any) => p.items) || [];
+    const seen = new Set<string>();
+    const dedup: any[] = [];
+    for (const r of flat) {
+      const id = r?._id;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      dedup.push(r);
+    }
+    return dedup;
+  }, [roomsPages]);
 
   const { data: messages = [], isLoading: messagesLoading, isFetching: messagesFetching } = useQuery(
     ['messages', currentRoom],
@@ -112,6 +144,9 @@ const ChatPage: React.FC = () => {
         rooms={rooms} 
         onRoomSelect={handleRoomSelect}
         selectedRoomId={currentRoom}
+        loadMore={() => fetchNextPage()}
+        hasNextPage={!!hasNextPage}
+        fetchingNextPage={!!isFetchingNextPage}
       />
     </Box>
   );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import {
   List,
   ListItem,
@@ -40,14 +40,18 @@ interface RoomListProps {
   rooms: Room[];
   onRoomSelect: (room: Room) => void;
   selectedRoomId: string | null;
+  loadMore?: () => void;
+  hasNextPage?: boolean;
+  fetchingNextPage?: boolean;
 }
 
-const RoomList: React.FC<RoomListProps> = ({ rooms, onRoomSelect, selectedRoomId }) => {
+const RoomList: React.FC<RoomListProps> = ({ rooms, onRoomSelect, selectedRoomId, loadMore, hasNextPage, fetchingNextPage }) => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [roomName, setRoomName] = useState('');
   const [roomDescription, setRoomDescription] = useState('');
   // 방 타입은 게스트 모드에서 공개만 지원하므로 입력 제거
   const queryClient = useQueryClient();
+  const listRef = useRef<HTMLUListElement | null>(null);
 
   const createRoomMutation = useMutation(
     (roomData: any) => axios.post(`${API_URL}/chat/rooms`, roomData),
@@ -82,6 +86,15 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onRoomSelect, selectedRoomId
     });
   };
 
+  const handleScroll = useCallback((e: React.UIEvent<HTMLUListElement>) => {
+    if (!hasNextPage || fetchingNextPage) return;
+    const el = e.currentTarget;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distance < 200) {
+      try { loadMore && loadMore(); } catch {}
+    }
+  }, [hasNextPage, fetchingNextPage, loadMore]);
+
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
@@ -112,7 +125,7 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onRoomSelect, selectedRoomId
       </Box>
 
       {/* Room List */}
-      <List sx={{ flex: 1, overflow: 'auto', p: 1 }}>
+      <List ref={listRef} onScroll={handleScroll} sx={{ flex: 1, overflow: 'auto', p: 1 }}>
         {rooms.length === 0 ? (
           <Box sx={{ p: 3, textAlign: 'center' }}>
             <GroupIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
@@ -207,6 +220,11 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onRoomSelect, selectedRoomId
               </ListItem>
             </Fade>
           ))
+        )}
+        {hasNextPage && (
+          <Box sx={{ p: 2, textAlign: 'center', color: 'text.secondary' }}>
+            {fetchingNextPage ? '불러오는 중...' : '아래로 스크롤하여 더 보기'}
+          </Box>
         )}
       </List>
 

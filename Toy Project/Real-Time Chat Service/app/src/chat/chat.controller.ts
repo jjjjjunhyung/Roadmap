@@ -33,9 +33,22 @@ export class ChatController {
   }
 
   @Get('rooms')
-  async getRooms(@Request() req) {
+  async getRooms(
+    @Request() req,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('before') before?: string,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
     this.validateGuestUser(req.user.sub);
-    return this.chatService.getRooms(req.user.sub);
+    const rooms = await this.chatService.getRooms(req.user.sub, { limit, before });
+    // Expose cursor for clients that opt-in to pagination
+    if (Array.isArray(rooms) && rooms.length > 0 && res) {
+      const oldest = rooms[rooms.length - 1]?.updatedAt;
+      if (oldest) {
+        try { res.setHeader('X-Next-Cursor', new Date(oldest).toISOString()); } catch {}
+      }
+    }
+    return rooms;
   }
 
   @Post('rooms')
