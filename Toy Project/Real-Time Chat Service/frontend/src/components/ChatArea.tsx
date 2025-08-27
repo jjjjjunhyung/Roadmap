@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { VariableSizeList as List } from 'react-window';
 import { useQueryClient } from 'react-query';
 import {
   Box,
@@ -67,53 +68,60 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
   // keyset pagination: we use 'before' cursor instead of page/skip
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<List>(null);
+  const containerRef = useRef<HTMLDivElement>(null); // measures available size
+  const listOuterRef = useRef<HTMLDivElement>(null); // scrollable element from react-window
+  const [listHeight, setListHeight] = useState<number>(0);
+  const [listWidth, setListWidth] = useState<number>(0);
+  const listHeightObserver = useRef<any>(null);
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const activeRoomId = room?._id || roomId;
   const [isSwitching, setIsSwitching] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
-  const [editingValue, setEditingValue] = useState<string>('');
+  const editingInputRef = useRef<HTMLInputElement | null>(null);
+  const editingValueRef = useRef<string>('');
   // unread/new-message divider removed; lastSeen tracking not used
   const loadCooldownUntilRef = useRef<number>(0);
   const autoScrollRef = useRef<boolean>(true);
   const NEAR_BOTTOM_PX = 120;
 
+  const initScrolledRoomsRef = useRef<Record<string, boolean>>({});
   const forceScrollToBottom = () => {
-    const doScroll = () => {
-      const container = messagesContainerRef.current;
-      if (container) {
-        container.scrollTop = container.scrollHeight;
-      }
+    const toBottom = () => {
+      try {
+        const rowsLen = virtualRows.length;
+        if (rowsLen > 0) {
+          const roomKey = String(activeRoomId || '');
+          const firstTime = roomKey && !initScrolledRoomsRef.current[roomKey];
+          listRef.current?.scrollToItem(rowsLen - 1, firstTime ? 'end' : 'auto');
+          if (firstTime) initScrolledRoomsRef.current[roomKey] = true;
+        }
+      } catch {}
     };
-    // Immediate
-    doScroll();
-    // After layout
-    requestAnimationFrame(() => doScroll());
-    // After async renders (images/fonts/layout)
-    setTimeout(doScroll, 50);
-    setTimeout(doScroll, 120);
+    toBottom();
+    requestAnimationFrame(() => toBottom());
+    setTimeout(toBottom, 50);
+    setTimeout(toBottom, 120);
   };
 
   const isNearBottomNow = () => {
-    const container = messagesContainerRef.current;
+    const container = listOuterRef.current;
     if (!container) return true;
     const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
     return distance < NEAR_BOTTOM_PX;
   };
 
   const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    try {
+      const rowsLen = virtualRows.length;
+      if (rowsLen > 0) listRef.current?.scrollToItem(rowsLen - 1, 'auto');
+    } catch {}
   };
 
   const scrollToBottomImmediate = () => {
-    const container = messagesContainerRef.current;
-    if (container) {
-      container.scrollTop = container.scrollHeight;
-    }
+    const rowsLen = virtualRows.length;
+    if (rowsLen > 0) listRef.current?.scrollToItem(rowsLen - 1, 'end');
   };
 
   const formatMessageTime = (dateString: string) => {
@@ -224,10 +232,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
         setHasMore(false);
         loadCooldownUntilRef.current = Date.now() + 2000;
       } else {
-        const container = messagesContainerRef.current;
-        const previousScrollTop = container?.scrollTop || 0;
-        const previousScrollHeight = container?.scrollHeight || 0;
-        
+        // prepend 전 스크롤 보정 정보 캡쳐
+        captureBeforePrepend();
         setAllMessages(prevMessages => {
           const existingIds = new Set(prevMessages.map(m => m._id));
           const newOlderMessages = olderMessages.filter((m: Message) => !existingIds.has(m._id));
@@ -240,15 +246,6 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
         } else {
           loadCooldownUntilRef.current = Date.now() + 500;
         }
-        
-        // 스크롤 위치 유지
-        setTimeout(() => {
-          if (container) {
-            const newScrollHeight = container.scrollHeight;
-            const scrollDifference = newScrollHeight - previousScrollHeight;
-            container.scrollTop = previousScrollTop + scrollDifference;
-          }
-        }, 50);
       }
     } catch (error) {
       console.error('과거 메시지 로드 실패:', error);
@@ -258,35 +255,22 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
     }
   }, [activeRoomId, isLoadingMore, hasMore]);
 
-  // 스크롤 이벤트 핸들러
-  const handleScroll = useCallback(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
+  // react-window 스크롤 이벤트 핸들러
+  const handleListScroll = useCallback(({ scrollOffset }: { scrollOffset: number }) => {
+    const outer = listOuterRef.current;
+    if (!outer) return;
     setIsUserScrolling(true);
-    
-    // 스크롤이 맨 위에 가까워지면 과거 메시지 로드
-    if (container.scrollTop < 100 && hasMore && !isLoadingMore) {
+    // 상단 근접 시 과거 메시지 로드
+    if (scrollOffset < 100 && hasMore && !isLoadingMore) {
       loadMoreMessages();
     }
-
-    // 사용자가 맨 아래 근처에 있으면 새 메시지 시 자동 스크롤
-    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-    if (isNearBottom) {
-      setIsUserScrolling(false);
-    }
-    // 자동 스크롤 여부 갱신(바닥 근처일 때만 자동 스크롤 허용)
-    autoScrollRef.current = isNearBottom;
-    setShouldScrollToBottom(isNearBottom);
+    // 하단 근접 여부 계산
+    const distance = outer.scrollHeight - (outer.scrollTop + outer.clientHeight);
+    const nearBottom = distance < 100;
+    if (nearBottom) setIsUserScrolling(false);
+    autoScrollRef.current = nearBottom;
+    setShouldScrollToBottom(nearBottom);
   }, [hasMore, isLoadingMore, loadMoreMessages]);
-
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (container) {
-      container.addEventListener('scroll', handleScroll, { passive: true });
-      return () => container.removeEventListener('scroll', handleScroll);
-    }
-  }, [handleScroll]);
 
   const handleSend = () => {
     if (inputValue.trim() && activeRoomId) {
@@ -299,21 +283,25 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
 
   const startEdit = (message: any) => {
     setEditingMessageId(message._id);
-    setEditingValue(message.content);
+    editingValueRef.current = message.content || '';
+    // 포커스는 렌더 후 적용
+    setTimeout(() => {
+      try { editingInputRef.current?.focus(); } catch {}
+    }, 0);
   };
 
   const cancelEdit = () => {
     setEditingMessageId(null);
-    setEditingValue('');
+    editingValueRef.current = '';
   };
 
   const submitEdit = () => {
     if (!editingMessageId || !activeRoomId) return;
-    const content = editingValue.trim();
+    const content = (editingInputRef.current?.value || '').trim();
     if (!content) return;
     wsEditMessage(editingMessageId, activeRoomId, content);
     setEditingMessageId(null);
-    setEditingValue('');
+    editingValueRef.current = '';
   };
 
   const confirmAndDelete = (message: any) => {
@@ -395,7 +383,261 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
     }, [] as any[]);
   }, [displayMessages]);
 
-  
+  // 가상화용 플랫 로우 구성: 날짜 칩(row type 'day'), 그룹(row type 'group')
+  type GroupRow = {
+    type: 'group';
+    key: string;
+    group: any;
+  };
+  type DayRow = {
+    type: 'day';
+    key: string;
+    day: Date;
+  };
+  type RowItem = GroupRow | DayRow;
+
+  const virtualRows: RowItem[] = useMemo(() => {
+    const rows: RowItem[] = [];
+    let prevDayKey: string | null = null;
+    displayGroupedMessages.forEach((group: any, idx: number) => {
+      const day = new Date(group.timestamp);
+      const dayKey = day.toDateString();
+      if (dayKey !== prevDayKey) {
+        rows.push({ type: 'day', key: `day-${dayKey}`, day });
+        prevDayKey = dayKey;
+      }
+      rows.push({ type: 'group', key: `grp-${group.sender}-${group.timestamp}-${idx}`, group });
+    });
+    return rows;
+  }, [displayGroupedMessages]);
+
+  // List 크기 측정 (컨테이너 채우기)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const RO: any = (window as any).ResizeObserver;
+    const onResize = () => {
+      setListHeight(el.clientHeight);
+      setListWidth(el.clientWidth);
+    };
+    if (RO) {
+      const ro = new RO(() => onResize());
+      listHeightObserver.current = ro;
+      ro.observe(el);
+      onResize();
+      return () => {
+        try { ro.disconnect(); } catch {}
+        listHeightObserver.current = null;
+      };
+    } else {
+      window.addEventListener('resize', onResize);
+      onResize();
+      return () => window.removeEventListener('resize', onResize);
+    }
+  }, []);
+
+  // Row 높이 측정 맵과 사이즈 함수
+  const sizeMapRef = useRef<Map<number, number>>(new Map());
+  const setRowSize = useCallback((index: number, size: number) => {
+    const prev = sizeMapRef.current.get(index);
+    if (prev !== size) {
+      sizeMapRef.current.set(index, size);
+      // 리스트에 사이즈 변경 알리기
+      listRef.current?.resetAfterIndex(index, false);
+    }
+  }, []);
+
+  const getItemSize = useCallback((index: number) => {
+    return sizeMapRef.current.get(index) || (virtualRows[index]?.type === 'day' ? 40 : 100);
+  }, [virtualRows]);
+
+  // 새 메시지나 방 전환 시 하단 정렬 유지
+  useEffect(() => {
+    if (virtualRows.length > 0 && (autoScrollRef.current || isNearBottomNow())) {
+      const t = setTimeout(() => scrollToBottom(), 30);
+      return () => clearTimeout(t);
+    }
+  }, [virtualRows]);
+
+  // 과거 메시지 로드 시 스크롤 위치 유지 (scrollHeight 차이)
+  const preserveScrollOnPrepend = useRef<{ top: number; height: number } | null>(null);
+  useEffect(() => {
+    // capture before
+    const outer = listOuterRef.current;
+    if (!outer) return;
+    const before = preserveScrollOnPrepend.current;
+    if (before) {
+      // after render, adjust
+      const adj = () => {
+        const newHeight = outer.scrollHeight;
+        const delta = newHeight - before.height;
+        outer.scrollTop = before.top + delta;
+        preserveScrollOnPrepend.current = null;
+      };
+      requestAnimationFrame(adj);
+      setTimeout(adj, 30);
+    }
+  });
+
+  // loadMoreMessages 훅에서 prepend 전 상태 저장
+  const captureBeforePrepend = () => {
+    const outer = listOuterRef.current;
+    if (!outer) return;
+    preserveScrollOnPrepend.current = { top: outer.scrollTop, height: outer.scrollHeight };
+  };
+
+  // react-window Row wrapper: 동적 높이 측정
+  const MeasuredRow: React.FC<{ index: number; style: React.CSSProperties; setRowSize: (i: number, s: number) => void; children: React.ReactNode }> = ({ index, style, setRowSize, children }) => {
+    const rowRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+      const el = rowRef.current;
+      if (!el) return;
+      const ro = new ResizeObserver(() => {
+        const h = Math.ceil(el.getBoundingClientRect().height);
+        setRowSize(index, h);
+      });
+      ro.observe(el);
+      // 초기 측정
+      const initial = Math.ceil(el.getBoundingClientRect().height);
+      setRowSize(index, initial);
+      return () => ro.disconnect();
+    }, [index, setRowSize]);
+    return (
+      <div style={style}>
+        <div ref={rowRef} style={{ overflow: 'visible' }}>
+          {children}
+        </div>
+      </div>
+    );
+  };
+
+  // 메시지 리스트 가상화 뷰를 메모이즈하여 입력 타이핑 시 재렌더/재애니메이션 방지
+  const listView = useMemo(() => {
+    if (displayMessages.length === 0) return null;
+    if (listHeight <= 0) return null;
+    return (
+      <List
+        ref={listRef}
+        height={listHeight}
+        width={listWidth}
+        itemCount={virtualRows.length}
+        itemSize={getItemSize}
+        outerRef={listOuterRef}
+        overscanCount={6}
+        onScroll={handleListScroll}
+        itemKey={(index) => virtualRows[index]?.key || index}
+      >
+        {({ index, style }: { index: number; style: React.CSSProperties }) => {
+          const row = virtualRows[index];
+          return (
+            <MeasuredRow index={index} style={style} setRowSize={setRowSize}>
+              {row.type === 'day' ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', my: 1 }}>
+                  <Chip label={isToday(row.day) ? '오늘' : isYesterday(row.day) ? '어제' : format(row.day, 'yyyy.MM.dd', { locale: ko })} size="small" />
+                </Box>
+              ) : (
+                <Fade in appear={false} timeout={0}>
+                  <Box sx={{ display: 'flex', flexDirection: row.group.sender === user?.id ? 'row-reverse' : 'row', alignItems: 'flex-start', gap: 1.5, px: 2, py: 1 }}>
+                    {row.group.sender !== user?.id && (
+                      <Avatar sx={{ width: 36, height: 36, bgcolor: 'secondary.main', fontSize: '0.875rem', flexShrink: 0 }}>
+                        {(row.group.senderUsername || 'G')[0].toUpperCase()}
+                      </Avatar>
+                    )}
+                    <Box sx={{ maxWidth: '70%', display: 'flex', flexDirection: 'column', alignItems: row.group.sender === user?.id ? 'flex-end' : 'flex-start' }}>
+                      {row.group.sender !== user?.id && (
+                        <Box sx={{ mb: 0.5, ml: 0.5 }}>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                            {row.group.senderUsername || 'Guest'}
+                          </Typography>
+                        </Box>
+                      )}
+                      {row.group.messages.map((message: any, msgIndex: number) => (
+                        <Paper key={message._id || message.tempId} elevation={0} sx={{ p: 2, mb: msgIndex < row.group.messages.length - 1 ? 0.5 : 1, maxWidth: '100%', bgcolor: row.group.sender === user?.id ? 'primary.main' : 'background.paper', opacity: message.isPending ? 0.7 : 1, color: row.group.sender === user?.id ? 'primary.contrastText' : 'text.primary', borderRadius: 2, boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)', border: row.group.sender !== user?.id ? '1px solid' : 'none', borderColor: 'divider', position: 'relative', overflow: 'visible',
+                          '& .message-actions': {
+                            opacity: 0,
+                            visibility: 'hidden',
+                            transition: 'opacity .15s ease',
+                            zIndex: 2,
+                          },
+                          '&:hover .message-actions': {
+                            opacity: 1,
+                            visibility: 'visible',
+                          },
+                          '& .message-actions:hover': {
+                            opacity: 1,
+                            visibility: 'visible',
+                          },
+                          '&:before': {
+                            content: '""',
+                            position: 'absolute',
+                            top: 0,
+                            bottom: 0,
+                            left: '-28px',
+                            width: '28px',
+                            pointerEvents: 'auto',
+                          },
+                        }}>
+                          {editingMessageId === message._id ? (
+                            <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
+                              <TextField
+                                fullWidth
+                                multiline
+                                maxRows={6}
+                                defaultValue={editingValueRef.current || message.content}
+                                inputRef={(el) => { editingInputRef.current = el; }}
+                                onChange={(e) => { editingValueRef.current = e.target.value; }}
+                                variant="standard"
+                                InputProps={{ sx: { color: row.group.sender === user?.id ? 'primary.contrastText' : 'text.primary' } }}
+                              />
+                              <IconButton size="small" onClick={submitEdit} aria-label="저장" sx={{ color: row.group.sender === user?.id ? 'primary.contrastText' : 'text.primary' }}>
+                                <CheckIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton size="small" onClick={cancelEdit} aria-label="취소" sx={{ color: row.group.sender === user?.id ? 'primary.contrastText' : 'text.primary' }}>
+                                <CloseIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          ) : (
+                            <>
+                              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>
+                                {message.content}
+                              </Typography>
+                              {message.edited && (
+                                <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                                  (수정됨)
+                                </Typography>
+                              )}
+                              {row.group.sender === user?.id && (
+                                <Box className="message-actions" sx={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: 'calc(100% + 8px)', display: 'flex', gap: 0.25, alignItems: 'center' }}>
+                                  <Tooltip title="수정">
+                                    <IconButton size="small" onClick={() => startEdit(message)} sx={{ color: 'primary.main' }}>
+                                      <EditIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                  <Tooltip title="삭제">
+                                    <IconButton size="small" onClick={() => confirmAndDelete(message)} sx={{ color: 'primary.main' }}>
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
+                              )}
+                            </>
+                          )}
+                        </Paper>
+                      ))}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, ml: row.group.sender === user?.id ? 0 : 0.5, mr: row.group.sender === user?.id ? 0.5 : 0 }}>
+                        <Typography variant="caption" color="text.secondary">{formatMessageTime(row.group.timestamp)}</Typography>
+                      </Box>
+                    </Box>
+                  </Box>
+                </Fade>
+              )}
+            </MeasuredRow>
+          );
+        }}
+      </List>
+    );
+  }, [displayMessages.length, listHeight, listWidth, virtualRows, getItemSize, handleListScroll, setRowSize, user?.id, editingMessageId]);
+
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -441,56 +683,23 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
         </Box>
       </Box>
 
-      {/* Messages Area - 첫 메시지를 하단에 표시하고 스크롤바 표시 */}
-      <Box 
-        ref={messagesContainerRef}
-        sx={{ 
-          flex: 1, 
+      {/* Messages Area - react-window 가상화 적용 */}
+      <Box
+        ref={containerRef}
+        sx={{
+          flex: 1,
           minHeight: 0,
-          overflowY: 'auto',
-          overflowX: 'hidden',
+          overflow: 'hidden',
           bgcolor: 'background.default',
-          display: 'flex',
-          flexDirection: 'column',
-          position: 'relative',
-          // 스크롤바 스타일링
-          '&::-webkit-scrollbar': {
-            width: '8px',
-          },
-          '&::-webkit-scrollbar-track': {
-            background: '#f1f1f1',
-            borderRadius: '10px',
-          },
-          '&::-webkit-scrollbar-thumb': {
-            background: '#888',
-            borderRadius: '10px',
-            '&:hover': {
-              background: '#555',
-            },
-          },
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#888 #f1f1f1',
+          position: 'relative'
         }}
       >
-        {((isSwitching || loading) && displayMessages.length === 0) || (fetching && displayMessages.length === 0) ? (
-          <Box sx={{ 
-            flex: 1, 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center'
-          }}>
+        {((loading || fetching) && virtualRows.length === 0) ? (
+          <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <CircularProgress size={28} />
           </Box>
         ) : displayMessages.length === 0 ? (
-          // 빈 상태 - 중앙 정렬
-          <Box sx={{ 
-            flex: 1,
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            textAlign: 'center',
-            p: 3
-          }}>
+          <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', p: 3 }}>
             <Box>
               <EmojiIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
               <Typography variant="h6" color="text.secondary" gutterBottom>
@@ -503,218 +712,13 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
           </Box>
         ) : (
           <>
-            {/* 로딩 인디케이터 - 상단에 고정 */}
             {isLoadingMore && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 2, gap: 1 }}>
-                <CircularProgress size={20} />
-                <Typography variant="body2" color="text.secondary">
-                  과거 메시지를 불러오는 중...
-                </Typography>
+              <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', p: 1, gap: 1, zIndex: 1 }}>
+                <CircularProgress size={18} />
+                <Typography variant="caption" color="text.secondary">과거 메시지를 불러오는 중...</Typography>
               </Box>
             )}
-
-            {/* 상단 여백 (첫 메시지를 하단으로 밀어내기 위함) */}
-            <Box sx={{ flex: 1 }} />
-
-            {/* 메시지 목록 - 하단에 정렬 */}
-            <Box sx={{ p: 2 }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {(() => {
-                  const nodes: React.ReactNode[] = [];
-                  let prevDayKey: string | null = null;
-                  displayGroupedMessages.forEach((group: any, groupIndex: number) => {
-                    const day = new Date(group.timestamp);
-                    const dayKey = day.toDateString();
-                    if (dayKey !== prevDayKey) {
-                      nodes.push(
-                        <Box key={`day-${group.timestamp}-${groupIndex}`} sx={{ display: 'flex', justifyContent: 'center', my: 1 }}>
-                          <Chip label={
-                            isToday(day)
-                              ? '오늘'
-                              : isYesterday(day)
-                                ? '어제'
-                                : format(day, 'yyyy.MM.dd', { locale: ko })
-                          } size="small" />
-                        </Box>
-                      );
-                      prevDayKey = dayKey;
-                    }
-
-                    nodes.push(
-                      <Fade in key={`${group.sender}-${groupIndex}`} timeout={300}>
-                        <Box sx={{ 
-                          display: 'flex', 
-                          flexDirection: group.sender === user?.id ? 'row-reverse' : 'row',
-                          alignItems: 'flex-start',
-                          gap: 1.5
-                        }}>
-                          {group.sender !== user?.id && (
-                            <Avatar sx={{ 
-                              width: 36, 
-                              height: 36,
-                              bgcolor: 'secondary.main',
-                              fontSize: '0.875rem',
-                              flexShrink: 0
-                            }}>
-                              {(group.senderUsername || 'G')[0].toUpperCase()}
-                            </Avatar>
-                          )}
-                          
-                          <Box sx={{ 
-                            maxWidth: '70%',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: group.sender === user?.id ? 'flex-end' : 'flex-start'
-                          }}>
-                            {/* Sender info */}
-                            {group.sender !== user?.id && (
-                              <Box sx={{ mb: 0.5, ml: 0.5 }}>
-                                <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.primary' }}>
-                                  {group.senderUsername || 'Guest'}
-                                </Typography>
-                              </Box>
-                            )}
-                            
-                            {/* Messages */}
-                            {group.messages.map((message: any, msgIndex: number) => (
-                              <Paper
-                                key={message._id || message.tempId}
-                                elevation={0}
-                                sx={{
-                                  p: 2,
-                                  mb: msgIndex < group.messages.length - 1 ? 0.5 : 1,
-                                  maxWidth: '100%',
-                                  bgcolor: group.sender === user?.id ? 'primary.main' : 'background.paper',
-                                  opacity: message.isPending ? 0.7 : 1,
-                                  color: group.sender === user?.id ? 'primary.contrastText' : 'text.primary',
-                                  borderRadius: 2,
-                                  boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)',
-                                  border: group.sender !== user?.id ? '1px solid' : 'none',
-                                  borderColor: 'divider',
-                                  position: 'relative',
-                                  overflow: 'visible',
-                                  '& .message-actions': {
-                                    opacity: 0,
-                                    visibility: 'hidden',
-                                    transition: 'opacity .15s ease',
-                                  },
-                                  '&:hover .message-actions': {
-                                    opacity: 1,
-                                    visibility: 'visible',
-                                  },
-                                  '& .message-actions:hover': {
-                                    opacity: 1,
-                                    visibility: 'visible',
-                                  },
-                                  '&:before': {
-                                    content: '""',
-                                    position: 'absolute',
-                                    top: 0,
-                                    bottom: 0,
-                                    left: '-8px',
-                                    width: '8px',
-                                  },
-                                  '&:hover': {
-                                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-                                  }
-                                }}
-                              >
-                                {editingMessageId === message._id ? (
-                                  <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
-                                    <TextField
-                                      fullWidth
-                                      multiline
-                                      maxRows={6}
-                                      value={editingValue}
-                                      onChange={(e) => setEditingValue(e.target.value)}
-                                      variant="standard"
-                                      InputProps={{
-                                        sx: {
-                                          color: group.sender === user?.id ? 'primary.contrastText' : 'text.primary',
-                                        }
-                                      }}
-                                    />
-                                    <IconButton size="small" onClick={submitEdit} aria-label="저장" sx={{ color: group.sender === user?.id ? 'primary.contrastText' : 'text.primary' }}>
-                                      <CheckIcon fontSize="small" />
-                                    </IconButton>
-                                    <IconButton size="small" onClick={cancelEdit} aria-label="취소" sx={{ color: group.sender === user?.id ? 'primary.contrastText' : 'text.primary' }}>
-                                      <CloseIcon fontSize="small" />
-                                    </IconButton>
-                                  </Box>
-                                ) : (
-                                  <>
-                                    <Typography 
-                                      variant="body1" 
-                                      sx={{ 
-                                        whiteSpace: 'pre-wrap',
-                                        wordBreak: 'break-word',
-                                        lineHeight: 1.5
-                                      }}
-                                    >
-                                      {message.content}
-                                    </Typography>
-                                    {message.edited && (
-                                      <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                                        (수정됨)
-                                      </Typography>
-                                    )}
-                                    {/* My message actions */}
-                                    {group.sender === user?.id && (
-                              <Box
-                                className="message-actions"
-                                sx={{
-                                  position: 'absolute',
-                                  top: '50%',
-                                  transform: 'translateY(-50%)',
-                                  right: 'calc(100% + 8px)',
-                                  display: 'flex',
-                                  gap: 0.25,
-                                  alignItems: 'center',
-                                }}
-                              >
-                                <Tooltip title="수정">
-                                  <IconButton size="small" onClick={() => startEdit(message)} sx={{ color: 'primary.main' }}>
-                                    <EditIcon fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                                <Tooltip title="삭제">
-                                  <IconButton size="small" onClick={() => confirmAndDelete(message)} sx={{ color: 'primary.main' }}>
-                                    <DeleteIcon fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              </Box>
-                            )}
-                          </>
-                        )}
-                      </Paper>
-                    ))}
-                            
-                            {/* Timestamp */}
-                            <Box sx={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              gap: 1,
-                              mt: 0.5,
-                              ml: group.sender === user?.id ? 0 : 0.5,
-                              mr: group.sender === user?.id ? 0.5 : 0
-                            }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {formatMessageTime(group.timestamp)}
-                              </Typography>
-                            </Box>
-                          </Box>
-                        </Box>
-                      </Fade>
-                    );
-                  });
-                  return nodes;
-                })()}
-
-                {/* 스크롤 앵커 */}
-                <div ref={messagesEndRef} style={{ height: '1px' }} />
-              </Box>
-            </Box>
-            
+            {listView}
           </>
         )}
       </Box>
