@@ -9,26 +9,28 @@ export class WsJwtGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const client: Socket = context.switchToWs().getClient();
-    const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.split(' ')[1];
 
-    console.log('🔐 WS Guard - Checking token...');
-    console.log('📋 WS Guard - Auth object:', JSON.stringify(client.handshake.auth, null, 2));
-    console.log('🎫 WS Guard - Token found:', token ? 'Yes' : 'No');
+    // If handshake middleware already verified and attached the user, allow fast-path
+    if ((client as any).data?.user) {
+      return true;
+    }
 
+    // Fallback: verify once and cache on the socket (no verbose logging)
+    const token = client.handshake?.auth?.token || client.handshake?.headers?.authorization?.split(' ')[1];
     if (!token) {
-      console.log('❌ WS Guard - No token, throwing unauthorized');
       throw new WsException('Unauthorized');
     }
 
     try {
-      const payload = this.jwtService.verify(token);
-      console.log('✅ WS Guard - JWT verified successfully');
-      console.log('👤 WS Guard - Payload:', JSON.stringify(payload, null, 2));
-      client.data.user = payload;
-      console.log('💾 WS Guard - User data stored in client.data');
+      const payload: any = this.jwtService.verify(token);
+      const userId = payload?.sub;
+      if (!userId || !String(userId).startsWith('guest_')) {
+        throw new WsException('Unauthorized');
+      }
+      (client as any).data = (client as any).data || {};
+      (client as any).data.user = payload;
       return true;
     } catch (err) {
-      console.log('❌ WS Guard - JWT verification failed:', err.message);
       throw new WsException('Unauthorized');
     }
   }
