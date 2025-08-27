@@ -57,15 +57,16 @@ export class ChatService {
     }
 
     const effectiveLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
-
-    const q = this.messageModel
+    // Fetch latest N in descending order, then return ascending to avoid client-side sorting
+    const docs = await this.messageModel
       .find(query)
       .sort({ createdAt: -1 })
       .limit(effectiveLimit)
       .select('_id content sender senderUsername senderAvatar room type createdAt edited editedAt readBy')
-      .lean();
+      .lean()
+      .exec();
 
-    return q.exec();
+    return docs.reverse();
   }
 
   async createRoom(createRoomDto: CreateRoomDto, ownerId: string): Promise<RoomDocument> {

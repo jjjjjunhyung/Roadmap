@@ -139,14 +139,9 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
     }
   };
 
-  // 외부 messages 변경 시 반영: 방 전환 시 초기화되므로 그대로 병합
+  // 외부 messages 변경 시 반영: 서버가 오름차순으로 반환하므로 그대로 사용
   useEffect(() => {
-    setAllMessages(prev => {
-      const map = new Map<string, Message>();
-      prev.forEach(m => map.set(m._id, m));
-      (messages || []).forEach(m => map.set(m._id, m));
-      return Array.from(map.values());
-    });
+    setAllMessages((messages || []));
   }, [messages, activeRoomId]);
 
   // 새 메시지가 있을 때만 하단으로 자동 스크롤(사용자가 위로 스크롤 중이면 유지)
@@ -252,6 +247,18 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
           const newOlderMessages = olderMessages.filter((m: Message) => !existingIds.has(m._id));
           return [...newOlderMessages, ...prevMessages];
         });
+        // Query 캐시도 동기화하여 이후 refetch 시 순서·데이터 일관 유지
+        try {
+          queryClient.setQueryData(['messages', activeRoomId], (oldData: any) => {
+            const prevArr: Message[] = Array.isArray(oldData) ? oldData : [];
+            const existing = new Set(prevArr.map((m: any) => m._id));
+            const merged = [
+              ...olderMessages.filter((m: any) => !existing.has(m._id)),
+              ...prevArr,
+            ];
+            return merged;
+          });
+        } catch {}
         // 헤더가 비어있다면, 이번 응답을 기준으로 다음 커서를 추정
         if (!nextHeader) {
           const last = olderMessages[olderMessages.length - 1];
@@ -370,15 +377,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
   // 화면에 사용할 소스: allMessages가 있으면 우선 사용, 없으면 props.messages 사용
   const sourceMessages: Message[] = (allMessages && allMessages.length > 0) ? allMessages : (messages || []);
 
-  // 메시지를 시간 순으로 정렬 (오래된 것부터) - 메모이즈
-  const sortedMessages = useMemo(() => {
-    return [...sourceMessages].sort((a, b) =>
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
-  }, [sourceMessages]);
-
-  // 실제 메시지만 사용 - 테스트 메시지 제거(현재는 그대로 사용)
-  const displayMessages = sortedMessages;
+  // 실제 메시지만 사용 - 서버가 오름차순으로 제공하므로 추가 정렬 없음
+  const displayMessages = sourceMessages;
 
   // 연속 메시지 그룹핑 계산 - 메모이즈
   const displayGroupedMessages = useMemo(() => {

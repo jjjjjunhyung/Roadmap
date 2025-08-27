@@ -110,12 +110,12 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       });
 
       newSocket.on('newMessage', (message: any) => {
-        // 메시지 리스트 캐시 동기화: 해당 방의 messages 캐시에 새 메시지 선반영
+        // 메시지 리스트 캐시 동기화: 서버가 오름차순으로 반환하므로 새 메시지는 뒤에 추가
         queryClient.setQueryData(['messages', message.room], (oldData: any) => {
           const prev = Array.isArray(oldData) ? oldData : [];
           const exists = prev.some((m: any) => m._id === message._id);
           if (exists) return prev;
-          return [message, ...prev];
+          return [...prev, message];
         });
         // 방 목록 미리보기 동기화: lastMessage 및 updatedAt 갱신
         queryClient.setQueryData('rooms', (oldData: any) => {

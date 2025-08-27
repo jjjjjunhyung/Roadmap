@@ -65,10 +65,10 @@ export class ChatController {
     @Res({ passthrough: true }) res?: Response,
   ) {
     const messages = await this.chatService.getRoomMessages(roomId, { page, limit, before });
-    // Add cursor header for clients that opt-in; body remains an array (backward compatible)
+    // Add cursor header for clients that opt-in; body remains an array (ascending order)
     if (Array.isArray(messages) && messages.length > 0 && res) {
-      // messages are sorted desc by createdAt; next cursor is oldest item's createdAt
-      const oldest = messages[messages.length - 1]?.createdAt;
+      // messages are sorted asc by createdAt; next cursor is first item's createdAt (fetch older)
+      const oldest = messages[0]?.createdAt;
       if (oldest) {
         try { res.setHeader('X-Next-Cursor', new Date(oldest).toISOString()); } catch {}
       }
