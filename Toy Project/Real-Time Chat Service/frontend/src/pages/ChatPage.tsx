@@ -51,7 +51,7 @@ const ChatPage: React.FC = () => {
   const { data: messages = [], isLoading: messagesLoading, isFetching: messagesFetching } = useQuery(
     ['messages', currentRoom],
     () => currentRoom ? 
-      axios.get(`${API_URL}/chat/rooms/${currentRoom}/messages?page=1&limit=20`).then(res => res.data) :
+      axios.get(`${API_URL}/chat/rooms/${currentRoom}/messages?limit=20`).then(res => res.data) :
       Promise.resolve([]),
     {
       enabled: !!currentRoom,

@@ -12,7 +12,9 @@ import {
   ForbiddenException,
   DefaultValuePipe,
   ParseIntPipe,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -60,8 +62,18 @@ export class ChatController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('before') before?: string,
+    @Res({ passthrough: true }) res?: Response,
   ) {
-    return this.chatService.getRoomMessages(roomId, { page, limit, before });
+    const messages = await this.chatService.getRoomMessages(roomId, { page, limit, before });
+    // Add cursor header for clients that opt-in; body remains an array (backward compatible)
+    if (Array.isArray(messages) && messages.length > 0 && res) {
+      // messages are sorted desc by createdAt; next cursor is oldest item's createdAt
+      const oldest = messages[messages.length - 1]?.createdAt;
+      if (oldest) {
+        try { res.setHeader('X-Next-Cursor', new Date(oldest).toISOString()); } catch {}
+      }
+    }
+    return messages;
   }
 
   @Delete('messages/:messageId')

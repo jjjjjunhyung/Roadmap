@@ -46,7 +46,7 @@ export class ChatService {
     roomId: string,
     options: { page?: number; limit?: number; before?: string } = {}
   ): Promise<any[]> {
-    const { page = 1, limit = 50, before } = options;
+    const { limit = 50, before } = options; // page ignored (cursor-based)
 
     const query: any = { room: roomId };
     if (before) {
@@ -56,17 +56,14 @@ export class ChatService {
       }
     }
 
-    let q = this.messageModel
+    const effectiveLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+
+    const q = this.messageModel
       .find(query)
       .sort({ createdAt: -1 })
-      .limit(limit)
+      .limit(effectiveLimit)
       .select('_id content sender senderUsername senderAvatar room type createdAt edited editedAt readBy')
       .lean();
-
-    if (!before) {
-      const skip = (page - 1) * limit;
-      q = q.skip(skip);
-    }
 
     return q.exec();
   }

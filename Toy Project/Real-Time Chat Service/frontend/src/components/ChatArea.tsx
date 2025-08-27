@@ -85,6 +85,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
   const loadCooldownUntilRef = useRef<number>(0);
   const autoScrollRef = useRef<boolean>(true);
   const NEAR_BOTTOM_PX = 120;
+  // Cursor-based pagination support: server-provided cursor header
+  const nextCursorRef = useRef<string | null>(null);
 
   const initScrolledRoomsRef = useRef<Record<string, boolean>>({});
   const forceScrollToBottom = () => {
@@ -169,6 +171,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
       setHasMore(true);
       setShouldScrollToBottom(true);
       setIsUserScrolling(false);
+      nextCursorRef.current = null; // reset server cursor on room change
       markAsRead(activeRoomId);
       // DOM 반영 직후 하단으로 강제 스크롤(여러 번 보장)
       forceScrollToBottom();
@@ -213,16 +216,26 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
 
     setIsLoadingMore(true);
     try {
-      // 키셋 페이지네이션: 현재 보유 중인 메시지 중 가장 오래된 createdAt 이전 데이터 요청
-      const current: Message[] = (allMessages && allMessages.length > 0) ? allMessages : (messages || []);
-      const oldestTs = current.length > 0
-        ? new Date(Math.min(...current.map(m => new Date(m.createdAt).getTime()))).toISOString()
-        : undefined;
-      const url = oldestTs
-        ? `${API_URL}/chat/rooms/${activeRoomId}/messages?before=${encodeURIComponent(oldestTs)}&limit=${PAGE_SIZE}`
+      // 커서 기반 페이지네이션: 서버가 제공하는 X-Next-Cursor를 우선 사용
+      let cursor = nextCursorRef.current;
+      if (!cursor) {
+        // 최초 호출 또는 헤더 미수신 시, 클라이언트에서 보유 중인 데이터로 추정 커서 계산
+        const current: Message[] = (allMessages && allMessages.length > 0) ? allMessages : (messages || []);
+        if (current.length > 0) {
+          const oldest = current.reduce((min, m) => (new Date(m.createdAt).getTime() < new Date(min.createdAt).getTime() ? m : min), current[0]);
+          cursor = oldest?.createdAt;
+        }
+      }
+
+      const url = cursor
+        ? `${API_URL}/chat/rooms/${activeRoomId}/messages?before=${encodeURIComponent(cursor)}&limit=${PAGE_SIZE}`
         : `${API_URL}/chat/rooms/${activeRoomId}/messages?limit=${PAGE_SIZE}`;
       const response = await axios.get(url);
       const olderMessages = response.data;
+      const nextHeader = (response.headers && (response.headers['x-next-cursor'] as string)) || '';
+      if (nextHeader) {
+        nextCursorRef.current = nextHeader;
+      }
 
       if (!Array.isArray(olderMessages)) {
         loadCooldownUntilRef.current = Date.now() + 2000;
@@ -239,6 +252,13 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
           const newOlderMessages = olderMessages.filter((m: Message) => !existingIds.has(m._id));
           return [...newOlderMessages, ...prevMessages];
         });
+        // 헤더가 비어있다면, 이번 응답을 기준으로 다음 커서를 추정
+        if (!nextHeader) {
+          const last = olderMessages[olderMessages.length - 1];
+          if (last?.createdAt) {
+            nextCursorRef.current = last.createdAt;
+          }
+        }
         // 마지막 페이지 추정: 페이지 크기 미만이면 더 없음
         if (olderMessages.length < PAGE_SIZE) {
           setHasMore(false);
@@ -253,7 +273,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({ room, roomId, messages, onRefresh, 
     } finally {
       setIsLoadingMore(false);
     }
-  }, [activeRoomId, isLoadingMore, hasMore]);
+  }, [activeRoomId, isLoadingMore, hasMore, allMessages, messages]);
 
   // react-window 스크롤 이벤트 핸들러
   const handleListScroll = useCallback(({ scrollOffset }: { scrollOffset: number }) => {
