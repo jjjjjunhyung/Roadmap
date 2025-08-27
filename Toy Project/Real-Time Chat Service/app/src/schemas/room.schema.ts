@@ -4,6 +4,35 @@ import { Message } from './message.schema';
 
 export type RoomDocument = Room & Document;
 
+@Schema({ _id: false })
+export class LastMessageSummary {
+  @Prop({ type: String })
+  _id: string; // Message ID as string
+
+  @Prop({ type: String, default: '' })
+  content: string;
+
+  @Prop({ type: String })
+  sender: string;
+
+  @Prop({ type: String })
+  senderUsername: string;
+
+  @Prop({ type: String, enum: ['text', 'image', 'file', 'system'], default: 'text' })
+  type: string;
+
+  @Prop({ type: Date })
+  createdAt: Date;
+
+  @Prop({ type: Boolean, default: false })
+  edited?: boolean;
+
+  @Prop({ type: Date, default: null })
+  editedAt?: Date | null;
+}
+
+export const LastMessageSummarySchema = SchemaFactory.createForClass(LastMessageSummary);
+
 @Schema({ timestamps: true })
 export class Room {
   @Prop({ required: true })
@@ -35,6 +64,9 @@ export class Room {
 
   @Prop({ type: Types.ObjectId, ref: Message.name, default: null })
   lastMessage: Types.ObjectId | Message | null;
+
+  @Prop({ type: LastMessageSummarySchema, default: null })
+  lastMessageSummary: LastMessageSummary | null;
 }
 
 export const RoomSchema = SchemaFactory.createForClass(Room);

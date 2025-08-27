@@ -30,8 +30,8 @@ export class ChatService {
 
     const savedMessage = await message.save();
 
-    // Update room's last message
-    await this.updateRoomLastMessage(createMessageDto.room, savedMessage._id.toString());
+    // Update room's last message + denormalized summary
+    await this.updateRoomLastMessage(createMessageDto.room, savedMessage);
 
     // Publish to Redis for real-time delivery
     await this.redisService.publishMessage('chat_messages', {
@@ -87,15 +87,51 @@ export class ChatService {
   }
 
   async getRooms(userId: string): Promise<any[]> {
-    // Return all public rooms for guest users
+    // Return all public rooms for guest users (use denormalized lastMessageSummary)
     const rooms = await this.roomModel
       .find({ type: 'public' })
-      .populate({ path: 'lastMessage', select: '_id content createdAt sender senderUsername' })
       .sort({ updatedAt: -1 })
       .lean()
       .exec();
 
-    return rooms.filter(room => room && room.name);
+    const filtered = rooms.filter((room: any) => room && room.name);
+
+    // Fallback: batch-fetch missing summaries by lastMessage IDs to keep compatibility
+    const missingIds = filtered
+      .filter((r: any) => r.lastMessage && !r.lastMessageSummary)
+      .map((r: any) => String(r.lastMessage));
+
+    let fallbackMap: Record<string, any> = {};
+    if (missingIds.length > 0) {
+      const msgs = await this.messageModel
+        .find({ _id: { $in: missingIds } })
+        .select('_id content sender senderUsername createdAt type edited editedAt')
+        .lean()
+        .exec();
+      fallbackMap = msgs.reduce((acc: any, m: any) => {
+        acc[String(m._id)] = m;
+        return acc;
+      }, {} as Record<string, any>);
+    }
+
+    return filtered.map((room: any) => {
+      const fallback = room.lastMessage && fallbackMap[String(room.lastMessage)]
+        ? {
+            _id: String(fallbackMap[String(room.lastMessage)]._id),
+            content: fallbackMap[String(room.lastMessage)].content,
+            sender: fallbackMap[String(room.lastMessage)].sender,
+            senderUsername: fallbackMap[String(room.lastMessage)].senderUsername,
+            createdAt: fallbackMap[String(room.lastMessage)].createdAt,
+            type: fallbackMap[String(room.lastMessage)].type,
+            edited: fallbackMap[String(room.lastMessage)].edited || false,
+            editedAt: fallbackMap[String(room.lastMessage)].editedAt || null,
+          }
+        : null;
+      return {
+        ...room,
+        lastMessage: room.lastMessageSummary || fallback,
+      };
+    });
   }
 
   async joinRoom(roomId: string, userId: string): Promise<RoomDocument> {
@@ -128,10 +164,20 @@ export class ChatService {
     );
   }
 
-  private async updateRoomLastMessage(roomId: string, messageId: string): Promise<void> {
+  private async updateRoomLastMessage(roomId: string, message: MessageDocument): Promise<void> {
     await this.roomModel.findByIdAndUpdate(roomId, {
-      lastMessage: messageId,
-      updatedAt: new Date(),
+      lastMessage: message._id,
+      lastMessageSummary: {
+        _id: String(message._id),
+        content: message.content,
+        sender: message.sender,
+        senderUsername: (message as any).senderUsername,
+        createdAt: (message as any).createdAt,
+        type: (message as any).type,
+        edited: (message as any).edited || false,
+        editedAt: (message as any).editedAt || null,
+      },
+      updatedAt: (message as any).createdAt || new Date(),
     });
   }
 
@@ -159,7 +205,19 @@ export class ChatService {
       .exec();
 
     await this.roomModel.findByIdAndUpdate(message.room, {
-      lastMessage: latest ? latest._id : null,
+      lastMessage: latest ? (latest as any)._id : null,
+      lastMessageSummary: latest
+        ? {
+            _id: String((latest as any)._id),
+            content: (latest as any).content,
+            sender: (latest as any).sender,
+            senderUsername: (latest as any).senderUsername,
+            createdAt: (latest as any).createdAt,
+            type: (latest as any).type,
+            edited: (latest as any).edited || false,
+            editedAt: (latest as any).editedAt || null,
+          }
+        : null,
       updatedAt: (latest as any)?.createdAt || new Date(),
     });
 
@@ -189,6 +247,27 @@ export class ChatService {
       type: 'message_edited',
       data: saved,
     });
+
+    // If edited message is the last message of the room, sync summary
+    try {
+      await this.roomModel.updateOne(
+        { _id: (saved as any).room, 'lastMessageSummary._id': String((saved as any)._id) },
+        {
+          $set: {
+            lastMessageSummary: {
+              _id: String((saved as any)._id),
+              content: (saved as any).content,
+              sender: (saved as any).sender,
+              senderUsername: (saved as any).senderUsername,
+              createdAt: (saved as any).createdAt,
+              type: (saved as any).type,
+              edited: true,
+              editedAt: (saved as any).editedAt || new Date(),
+            },
+          },
+        }
+      );
+    } catch {}
 
     return saved;
   }
