@@ -74,10 +74,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       this.connectedUsers.set(client.id, { userId, username });
       if (!client.data.rooms) client.data.rooms = new Set<string>();
 
+      // 로비 룸에 조인: 참가하지 않은 방 목록 업데이트(roomUpdated)를 로비 범위로만 브로드캐스트
+      try {
+        client.join('lobby');
+      } catch {}
+
       // 각 사용자별 전용 룸에 조인 (다중 인스턴스에서도 유저 타겟 전송용)
       try {
         client.join(`user:${userId}`);
       } catch {}
+
+      // 사용자 프로필(닉네임)을 Redis에 저장하여 방 목록 전송 시 활용
+      try {
+        const profileKey = `user:profile:${userId}`;
+        await this.redisService.hSet(profileKey, 'username', username);
+        await this.redisService.expire(profileKey, 60 * 60 * 24 * 2); // 2일 TTL
+      } catch (e) {
+        this.logger.warn(`Failed to cache user profile: ${e?.message || e}`);
+      }
 
       // 글로벌 온라인 사용자 상태를 Redis로 집계 (탭/연결 수 카운트)
       const onlineCountKey = `online:user:${userId}:count`;
@@ -88,20 +102,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
 
       this.logger.log(`Guest user ${username} (${userId}) connected`);
 
-      // 전체 온라인 사용자 목록을 Redis에서 취득해 전달
-      const allOnline = await this.redisService.getOnlineUsers();
-      const currentOnlineUsers = allOnline.map((uid) => ({
-        userId: uid,
-        username: this.extractUsernameFromUserId(uid),
-      }));
-      client.emit('onlineUsers', currentOnlineUsers);
-
-      client.broadcast.emit('userOnline', {
-        userId,
-        username,
-        status: 'online',
-        isGuest: true,
-      });
+      // 전역 온라인 사용자 이벤트/목록은 UI에서 사용하지 않으므로 송신하지 않음
     } catch (error) {
       this.logger.error('Connection error:', error);
       client.disconnect();
@@ -119,7 +120,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       const joinedRooms: Set<string> = client.data.rooms || new Set<string>();
       joinedRooms.forEach((roomId: string) => {
         this.decrementRoomMemberRedis(roomId, userInfo.userId, userInfo.username);
-        this.emitRoomOnlineUsers(roomId);
       });
 
       // 글로벌 온라인 사용자 상태 업데이트
@@ -129,14 +129,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
         await this.redisService.sRem('online_users', userInfo.userId);
         await this.redisService.del(onlineCountKey);
       }
-
-      // Broadcast user offline status (global)
-      client.broadcast.emit('userOffline', {
-        userId: userInfo.userId,
-        username: userInfo.username,
-        status: 'offline',
-        isGuest: true,
-      });
 
       // Also notify per-room listeners that the user left (on disconnect)
       try {
@@ -171,7 +163,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
 
       // Broadcast room last message update to all clients (for lobby/room list)
       try {
-        this.server.emit('roomUpdated', {
+        this.server.to('lobby').emit('roomUpdated', {
           roomId: createMessageDto.room,
           lastMessage: {
             _id: (message as any)._id,
@@ -242,7 +234,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
         });
         // Also notify all clients to refresh the room preview
         try {
-          this.server.emit('roomUpdated', {
+          this.server.to('lobby').emit('roomUpdated', {
             roomId: data.roomId,
             lastMessage: result?.newLastMessage ? {
               _id: (result.newLastMessage as any)._id,
@@ -287,10 +279,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
         userId,
         roomId: data.roomId,
         username,
+        hash: this.extractHashFromUserId(userId),
       });
 
-      // emit fresh room user list to all in the room (including self)
-      await this.emitRoomOnlineUsers(data.roomId);
+      // 입장한 당사자에게만 현재 방 사용자 전체 목록을 전달 (기존 참가자는 증분 이벤트로 동기화)
+      await this.emitRoomOnlineUsersToClient(client, data.roomId);
 
       return { status: 'success', data: room };
     } catch (error) {
@@ -322,8 +315,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
         roomId: data.roomId,
       });
 
-      // emit fresh room user list to all in the room
-      await this.emitRoomOnlineUsers(data.roomId);
+      // 나머지 참가자는 증분 이벤트로만 동기화
 
       return { status: 'success' };
     } catch (error) {
@@ -416,12 +408,38 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
 
   private async emitRoomOnlineUsers(roomId: string) {
     const members = await this.redisService.sMembers(`room:${roomId}:members`);
-    const users = members.map((uid) => ({
-      userId: uid,
-      username: this.extractUsernameFromUserId(uid),
-      hash: this.extractHashFromUserId(uid),
-    }));
+    const users = await this.hydrateUsersWithProfile(members);
     this.server.to(roomId).emit('roomOnlineUsers', { roomId, users });
+  }
+
+  // 특정 사용자에게만 현재 방 사용자 전체 목록을 전달
+  private async emitRoomOnlineUsersToClient(client: Socket, roomId: string) {
+    const members = await this.redisService.sMembers(`room:${roomId}:members`);
+    const users = await this.hydrateUsersWithProfile(members);
+    client.emit('roomOnlineUsers', { roomId, users });
+  }
+
+  private async hydrateUsersWithProfile(userIds: string[]) {
+    const results = await Promise.all(
+      (userIds || []).map(async (uid) => {
+        try {
+          const profileKey = `user:profile:${uid}`;
+          const username = (await this.redisService.hGet(profileKey, 'username')) || this.extractUsernameFromUserId(uid);
+          return {
+            userId: uid,
+            username,
+            hash: this.extractHashFromUserId(uid),
+          };
+        } catch {
+          return {
+            userId: uid,
+            username: this.extractUsernameFromUserId(uid),
+            hash: this.extractHashFromUserId(uid),
+          };
+        }
+      })
+    );
+    return results;
   }
 
   private extractHashFromUserId(userId: string): string {

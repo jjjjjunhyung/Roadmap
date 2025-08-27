@@ -219,12 +219,12 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
       // 전역 온라인 사용자 목록은 현재 UI에서 사용하지 않으므로 제거
 
-      newSocket.on('userJoinedRoom', ({ userId, roomId, username }) => {
+      newSocket.on('userJoinedRoom', ({ userId, roomId, username, hash }) => {
         if (currentRoomRef.current === roomId) {
           setRoomOnlineUsers(prev => {
             const exists = prev.some(u => u.userId === userId);
             if (exists) return prev;
-            return [...prev, { userId, username: username || userId }];
+            return [...prev, { userId, username: username || userId, hash }];
           });
         }
       });
@@ -302,7 +302,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     }
     // Optimistically include self until server list arrives
     if (user) {
-      setRoomOnlineUsers([{ userId: user.id, username: user.username }]);
+      const selfHash = (user.id || '').split('_')[2] || undefined;
+      setRoomOnlineUsers([{ userId: user.id, username: user.username, hash: selfHash }]);
     } else {
       setRoomOnlineUsers([]);
     }
