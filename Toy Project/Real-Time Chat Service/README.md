@@ -15,8 +15,8 @@ Terraform으로 구성된 인프라와 Docker Compose로 배포된 마이크로�
 
 ## 기술 스택
 - 백엔드: NestJS, Socket.IO, JWT, MongoDB, Redis
-- 프론트엔드: React 18, Material-UI, Socket.IO Client, React Query
-- 데이터베이스: MongoDB 7.0 (채팅 데이터), Redis 7.2 (캐시, 세션)
+- 프론트엔드: React, Material-UI, Socket.IO Client, React Query
+- 데이터베이스: MongoDB (채팅 데이터), Redis (캐시, 세션)
 - 파일 스토리지: MinIO
 - 리버스 프록시: Nginx
 - 컨테이너화: Docker Compose
@@ -155,7 +155,8 @@ graph TB
 services:
   mongodb:     # 1.0 CPU, 6GB RAM (limit)
   redis:       # 0.5 CPU, 3GB RAM (limit)
-  backend:     # 0.75 CPU, 3GB RAM (limit)
+  backend1:    # 0.75 CPU, 3GB RAM (limit)
+  backend2:    # 0.75 CPU, 3GB RAM (limit)
   frontend:    # 0.5 CPU, 1GB RAM (limit)
   nginx:       # 0.5 CPU, 1GB RAM (limit)
   minio:       # 0.5 CPU, 2GB RAM (limit)
