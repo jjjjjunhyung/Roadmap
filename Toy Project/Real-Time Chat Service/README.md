@@ -1,5 +1,5 @@
 # 실시간 채팅 서비스 ([테스트 링크](https://www.junhyung.xyz))
-이 프로젝트는 NestJS와 React를 사용한 실시간 채팅 애플리케이션을 Oracle Cloud Infrastructure(OCI) 무료 티어에 최저비용으로 배포한 구조를 보여줍니다. <br>
+이 프로젝트는 NestJS와 React를 사용한 실시간 채팅 애플리케이션을 Oracle Cloud(OCI) 무료 티어에 최저비용으로 배포한 구조를 보여줍니다. <br>
 Socket.IO를 활용한 실시간 통신과 JWT 기반 게스트 인증 시스템을 구현했습니다. <br>
 Terraform으로 구성된 인프라와 Docker Compose로 배포된 마이크로서비스 아키텍처를 포함합니다.
 
