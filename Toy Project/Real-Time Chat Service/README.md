@@ -50,7 +50,7 @@ graph TB
                 REACT[⚛️ React App<br/>Socket.IO Client<br/>Material-UI<br/>React Query + Infinite Scroll]
             end
 
-            subgraph "⚡ Backend Layer (x2)"
+            subgraph "⚡ Backend Layer"
                 NESTJS1[🏗️ NestJS #1<br/>Socket.IO + REST API<br/>Cursor Pagination]
                 NESTJS2[🏗️ NestJS #2<br/>Socket.IO + REST API<br/>Cursor Pagination]
             end
@@ -177,39 +177,6 @@ services:
 - Docker 컨테이너 자동 재시작 정책
 - Nginx 액세스 로그 및 에러 로그
 - 애플리케이션 헬스 엔드포인트 (`/health`)
-
-## 개발 및 배포 워크플로우
-
-### 1. 로컬 개발
-```bash
-# 백엔드 개발
-cd app/
-npm run start:dev
-
-# 프론트엔드 개발
-cd frontend/
-npm start
-
-# Docker Compose 개발 환경
-docker-compose up -d
-```
-
-### 2. 인프라 배포
-```bash
-cd infra/
-terraform init
-terraform plan
-terraform apply
-```
-
-### 3. 프로덕션 배포
-```bash
-# 서버에서 프로덕션 환경 실행
-docker-compose -f docker-compose.prod.yml up -d
-
-# SSL 인증서 업데이트
-./scripts/update-letsencrypt-cert.sh
-```
 
 ## 주요 아키텍처 특징
 
