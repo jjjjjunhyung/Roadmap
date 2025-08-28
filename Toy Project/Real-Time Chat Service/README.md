@@ -41,63 +41,84 @@ graph TB
     end
 
     subgraph "☁️ Oracle Cloud Infrastructure"
-        LB[📡 OCI Load Balancer<br/>SSL/TLS Termination<br/>Let's Encrypt<br/>Flexible 10 Mbps]
+        LB[📡 Load Balancer<br/>SSL/TLS Termination<br/>Let's Encrypt]
 
-        subgraph "💻 Ampere A1 Flex Instance"
-            NGINX[🔄 Nginx Proxy<br/>Reverse Proxy<br/>Static File Serving]
+        subgraph "💻 Ampere A1 Instance"
+            NGINX[🔄 Nginx Proxy<br/>Load Balancing<br/>X-Next-Cursor Headers]
 
             subgraph "🎨 Frontend Layer"
-                REACT[⚛️ React App<br/>Socket.IO Client<br/>Material-UI<br/>React Query]
+                REACT[⚛️ React App<br/>Socket.IO Client<br/>Material-UI<br/>React Query + Infinite Scroll]
             end
 
-            subgraph "⚡ Backend Layer"
-                NESTJS[🏗️ NestJS<br/>Socket.IO + REST API<br/>JWT Guest Auth<br/>Real-time Gateway]
+            subgraph "⚡ Backend Layer (x2)"
+                NESTJS1[🏗️ NestJS #1<br/>Socket.IO + REST API<br/>Cursor Pagination]
+                NESTJS2[🏗️ NestJS #2<br/>Socket.IO + REST API<br/>Cursor Pagination]
             end
 
-            subgraph "💾 Data & Storage Layer"
-                REDIS[⚡ Redis 7.2<br/>Socket.IO Adapter<br/>Session Cache<br/>Pub/Sub]
-                
-                MONGO[🗄️ MongoDB 7.0<br/>Chat Messages<br/>Users & Rooms<br/>Optimized Queries]
-                
-                MINIO[📁 MinIO<br/>File Storage<br/>Image Uploads]
+            subgraph "💾 Data & Messaging Layer"
+                REDIS[⚡ Redis Server<br/>Socket.IO Clustering<br/>Pub/Sub Hub<br/>User Profile Cache<br/>Online Status Management]
+
+                subgraph "📢 Redis Channels"
+                    PUBSUB_ROOM[📢 Room Events<br/>Message Updates]
+                    PUBSUB_USER[📢 User Events<br/>Join/Leave/Online Status]
+                    PUBSUB_TYPING[📢 Typing Events]
+                end
+
+                MONGO[🗄️ MongoDB<br/>Chat Data Storage<br/>Optimized Queries<br/>Cursor-based Pagination]
+                MINIO[📁 MinIO<br/>File Storage]
             end
         end
     end
 
     %% WebSocket Connections (Real-time)
-    U1 -.->|🔌 WebSocket<br/>Socket.IO + JWT| LB
-    U2 -.->|🔌 WebSocket<br/>Socket.IO + JWT| LB
-    U3 -.->|🔌 WebSocket<br/>Socket.IO + JWT| LB
+    U1 -.->|🔌 WebSocket<br/>Socket.IO + JWT<br/>User-specific Rooms| LB
+    U2 -.->|🔌 WebSocket<br/>Socket.IO + JWT<br/>User-specific Rooms| LB
+    U3 -.->|🔌 WebSocket<br/>Socket.IO + JWT<br/>User-specific Rooms| LB
 
     %% HTTP Connections
-    U1 -->|📄 HTTP/HTTPS<br/>REST API| LB
-    U2 -->|📄 HTTP/HTTPS<br/>REST API| LB
-    U3 -->|📄 HTTP/HTTPS<br/>Static Files| LB
+    U1 -->|📄 HTTP<br/>REST API + Cursor Headers| LB
+    U2 -->|📄 HTTP<br/>REST API + Cursor Headers| LB
+    U3 -->|📄 HTTP<br/>Static Files| LB
 
     LB --> NGINX
     NGINX --> REACT
-    NGINX --> NESTJS
+    NGINX --> NESTJS1
+    NGINX --> NESTJS2
 
-    %% Data Flow
-    NESTJS -.->|📡 Pub/Sub<br/>Real-time Events| REDIS
-    NESTJS --> MONGO
-    NESTJS --> MINIO
+    %% Socket.IO Clustering
+    NESTJS1 -.->|📡 Cluster Sync<br/>Profile Cache| REDIS
+    NESTJS2 -.->|📡 Cluster Sync<br/>Profile Cache| REDIS
+
+    %% Real-time Message Flow
+    NESTJS1 -.->|📢 Publish| PUBSUB_ROOM
+    NESTJS2 -.->|📢 Publish| PUBSUB_USER
+    NESTJS1 -.->|📢 Subscribe| PUBSUB_TYPING
+    NESTJS2 -.->|📢 Subscribe| PUBSUB_TYPING
+
+    PUBSUB_ROOM --> REDIS
+    PUBSUB_USER --> REDIS
+    PUBSUB_TYPING --> REDIS
+
+    %% Data Persistence
+    NESTJS1 --> MONGO
+    NESTJS2 --> MONGO
+    NESTJS1 --> MINIO
+    NESTJS2 --> MINIO
 
     %% Session Management
-    NESTJS -.->|🎫 Session Cache<br/>User Status| REDIS
+    NESTJS1 -.->|🎫 Sessions<br/>Online Counters| REDIS
+    NESTJS2 -.->|🎫 Cache<br/>User Profiles| REDIS
 
     %% Styling
     classDef websocket fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,stroke-dasharray: 5 5
     classDef pubsub fill:#fff3e0,stroke:#f57c00,stroke-width:3px
     classDef realtime fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
     classDef storage fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    classDef infrastructure fill:#fce4ec,stroke:#c2185b,stroke-width:2px
 
     class U1,U2,U3 websocket
-    class REDIS pubsub
-    class NESTJS,REACT realtime
+    class PUBSUB_ROOM,PUBSUB_USER,PUBSUB_TYPING,REDIS pubsub
+    class NESTJS1,NESTJS2,REACT realtime
     class MONGO,MINIO storage
-    class LB infrastructure
 ```
 
 ## 인프라 구성 요소
