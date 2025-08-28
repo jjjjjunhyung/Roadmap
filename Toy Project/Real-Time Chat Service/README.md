@@ -155,8 +155,8 @@ graph TB
 services:
   mongodb:     # 1.0 CPU, 6GB RAM (limit)
   redis:       # 0.5 CPU, 3GB RAM (limit)
-  backend1:    # 0.75 CPU, 3GB RAM (limit)
-  backend2:    # 0.75 CPU, 3GB RAM (limit)
+  backend1:    # 0.375 CPU, 1.5GB RAM (limit)
+  backend2:    # 0.375 CPU, 1.5GB RAM (limit)
   frontend:    # 0.5 CPU, 1GB RAM (limit)
   nginx:       # 0.5 CPU, 1GB RAM (limit)
   minio:       # 0.5 CPU, 2GB RAM (limit)
