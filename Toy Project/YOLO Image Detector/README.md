@@ -29,58 +29,91 @@ Terraform으로 구성된 인프라와 Docker 컨테이너로 배포된 애플�
 ## 인프라 구조 개요
 ```mermaid
 graph TB
-    User((User)) --> Route53
+    subgraph "🌐 Client Layer"
+        U1[👤 Guest User A<br/>Browser]
+        U2[👤 Guest User B<br/>Browser]
+        U3[👤 Guest User C<br/>Browser]
+    end
 
-    subgraph AWS["AWS Cloud"]
-        %% AWS Services outside VPC
-        subgraph Services["AWS Services"]
-            direction LR
-            Route53[Route53<br>junhyung.xyz]
-            ACM[ACM<br>SSL Certificate]
-            ECR[ECR Repository]
-        end
+    subgraph "☁️ Oracle Cloud Infrastructure"
+        LB[📡 Load Balancer<br/>SSL/TLS Termination<br/>Let's Encrypt]
 
-        %% VPC Network
-        subgraph VPC["VPC"]
-            direction TB
-            
-            subgraph PublicSubnet["Public Subnet"]
-                direction TB
-                ALB[Application<br>Load Balancer]
-                EIP[Elastic IP]
-                subgraph EC2["EC2 Instance<br>Amazon Linux 2023"]
-                    direction TB
-                    subgraph Docker["Docker"]
-                        direction LR
-                        Nginx[Nginx<br>HTTP Only] -->|Forwards Request| GradioApp[Gradio App]
-                    end
+        subgraph "💻 Ampere A1 Instance"
+            NGINX[🔄 Nginx Proxy<br/>Load Balancing<br/>X-Next-Cursor Headers]
+
+            subgraph "🎨 Frontend Layer"
+                REACT[⚛️ React App<br/>Socket.IO Client<br/>Material-UI<br/>React Query + Infinite Scroll]
+            end
+
+            subgraph "⚡ Backend Layer (x2)"
+                NESTJS1[🏗️ NestJS #1<br/>Socket.IO + REST API<br/>Cursor Pagination]
+                NESTJS2[🏗️ NestJS #2<br/>Socket.IO + REST API<br/>Cursor Pagination]
+            end
+
+            subgraph "💾 Data & Messaging Layer"
+                REDIS[⚡ Redis Server<br/>Socket.IO Clustering<br/>Pub/Sub Hub<br/>User Profile Cache<br/>Online Status Management]
+
+                subgraph "📢 Redis Channels"
+                    PUBSUB_ROOM[📢 Room Events<br/>Message Updates]
+                    PUBSUB_USER[📢 User Events<br/>Join/Leave/Online Status]
+                    PUBSUB_TYPING[📢 Typing Events]
                 end
-                ALB --> Nginx
-                EIP --- EC2
+
+                MONGO[🗄️ MongoDB<br/>Chat Data Storage<br/>Optimized Queries<br/>Cursor-based Pagination]
+                MINIO[📁 MinIO<br/>File Storage]
             end
         end
     end
 
-    %% Connections Crossing Boundaries
-    Route53 -->|Domain Routing| ALB
-    Route53 <-.->|Certificate Validation| ACM
-    ACM -.->|Provides Certificate| ALB
-    ECR -.->|Provides Image| GradioApp
+    %% WebSocket Connections (Real-time)
+    U1 -.->|🔌 WebSocket<br/>Socket.IO + JWT<br/>User-specific Rooms| LB
+    U2 -.->|🔌 WebSocket<br/>Socket.IO + JWT<br/>User-specific Rooms| LB
+    U3 -.->|🔌 WebSocket<br/>Socket.IO + JWT<br/>User-specific Rooms| LB
 
-    %% Style Definitions
-    classDef user fill:#6c757d,stroke:#495057,color:white;
-    classDef default fill:#ECEFF1,stroke:#B0BEC5,color:#37474F;
-    classDef aws fill:#FF9900,stroke:#E68A00,color:#232F3E;
-    classDef infraContainer fill:#90a4ae,stroke:#607d8b,color:white;
-    classDef compute fill:#64b5f6,stroke:#42a5f5,color:#111111;
-    classDef app fill:#4db6ac,stroke:#26a69a,color:white;
+    %% HTTP Connections
+    U1 -->|📄 HTTP<br/>REST API + Cursor Headers| LB
+    U2 -->|📄 HTTP<br/>REST API + Cursor Headers| LB
+    U3 -->|📄 HTTP<br/>Static Files| LB
 
-    %% Assign Classes to Nodes
-    class User user;
-    class Route53,ACM,ECR aws;
-    class Services,VPC,PublicSubnet infraContainer;
-    class EC2,EIP,Docker,ALB compute;
-    class Nginx,GradioApp app;
+    LB --> NGINX
+    NGINX --> REACT
+    NGINX --> NESTJS1
+    NGINX --> NESTJS2
+
+    %% Socket.IO Clustering
+    NESTJS1 -.->|📡 Cluster Sync<br/>Profile Cache| REDIS
+    NESTJS2 -.->|📡 Cluster Sync<br/>Profile Cache| REDIS
+
+    %% Real-time Message Flow
+    NESTJS1 -.->|📢 Publish| PUBSUB_ROOM
+    NESTJS2 -.->|📢 Publish| PUBSUB_USER
+    NESTJS1 -.->|📢 Subscribe| PUBSUB_TYPING
+    NESTJS2 -.->|📢 Subscribe| PUBSUB_TYPING
+
+    PUBSUB_ROOM --> REDIS
+    PUBSUB_USER --> REDIS
+    PUBSUB_TYPING --> REDIS
+
+    %% Data Persistence
+    NESTJS1 --> MONGO
+    NESTJS2 --> MONGO
+    NESTJS1 --> MINIO
+    NESTJS2 --> MINIO
+
+    %% Session Management
+    NESTJS1 -.->|🎫 Sessions<br/>Online Counters| REDIS
+    NESTJS2 -.->|🎫 Cache<br/>User Profiles| REDIS
+
+    %% Styling
+    classDef websocket fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,stroke-dasharray: 5 5
+    classDef pubsub fill:#fff3e0,stroke:#f57c00,stroke-width:3px
+    classDef realtime fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef storage fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+
+    class U1,U2,U3 websocket
+    class PUBSUB_ROOM,PUBSUB_USER,PUBSUB_TYPING,REDIS pubsub
+    class NESTJS1,NESTJS2,REACT realtime
+    class MONGO,MINIO storage
 ```
 
 ## 인프라 구성 요소
