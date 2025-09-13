@@ -1,3 +1,4 @@
+#cloud-config
 # Cloud-init for ${project_name} ${environment} server
 # 1. 패키지 관리 설정
 package_update: true
