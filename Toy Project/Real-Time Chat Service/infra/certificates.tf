@@ -1,6 +1,8 @@
 # TLS/HTTPS using Let's Encrypt certificates generated on instance
-# Let's Encrypt certificate resource
+# Let's Encrypt certificate resource (only when enabled)
 resource "oci_load_balancer_certificate" "lb_cert_letsencrypt" {
+  count = var.use_letsencrypt ? 1 : 0
+
   load_balancer_id = oci_load_balancer_load_balancer.chat_lb.id
   certificate_name = "letsencrypt-junhyung-xyz"
 
@@ -19,8 +21,10 @@ resource "oci_load_balancer_certificate" "lb_cert_letsencrypt" {
   }
 }
 
-# HTTPS listener
+# HTTPS listener (only when Let's Encrypt is enabled)
 resource "oci_load_balancer_listener" "chat_https_listener_letsencrypt" {
+  count = var.use_letsencrypt ? 1 : 0
+
   load_balancer_id         = oci_load_balancer_load_balancer.chat_lb.id
   name                     = "https"
   default_backend_set_name = oci_load_balancer_backend_set.chat_bs.name
@@ -28,7 +32,7 @@ resource "oci_load_balancer_listener" "chat_https_listener_letsencrypt" {
   port                     = 443
 
   ssl_configuration {
-    certificate_name        = oci_load_balancer_certificate.lb_cert_letsencrypt.certificate_name
+    certificate_name        = oci_load_balancer_certificate.lb_cert_letsencrypt[0].certificate_name
     verify_peer_certificate = false
     protocols               = ["TLSv1.2", "TLSv1.3"]
     cipher_suite_name       = "oci-compatible-ssl-cipher-suite-v1"
@@ -36,8 +40,10 @@ resource "oci_load_balancer_listener" "chat_https_listener_letsencrypt" {
   }
 }
 
-# HTTP -> HTTPS redirect
+# HTTP -> HTTPS redirect (only when HTTPS is enabled)
 resource "oci_load_balancer_rule_set" "redirect_to_https" {
+  count = var.use_letsencrypt ? 1 : 0
+
   load_balancer_id = oci_load_balancer_load_balancer.chat_lb.id
   name             = "redirect_to_https"
   items {
@@ -55,14 +61,14 @@ resource "oci_load_balancer_rule_set" "redirect_to_https" {
   }
 }
 
-# HTTP listener with redirect
+# HTTP listener with redirect (when HTTPS enabled) or direct backend (when HTTPS disabled)
 resource "oci_load_balancer_listener" "chat_http_listener" {
   load_balancer_id         = oci_load_balancer_load_balancer.chat_lb.id
   name                     = "http"
   default_backend_set_name = oci_load_balancer_backend_set.chat_bs.name
   protocol                 = "HTTP"
   port                     = 80
-  rule_set_names           = [oci_load_balancer_rule_set.redirect_to_https.name]
+  rule_set_names           = var.use_letsencrypt ? [oci_load_balancer_rule_set.redirect_to_https[0].name] : []
 }
 
 # Debug listener (temporary)

@@ -87,6 +87,12 @@ variable "ssh_public_key" {
   type        = string
 }
 
+variable "ssh_private_key_path" {
+  description = "Path to SSH private key file for connecting to the compute instance"
+  type        = string
+  default     = "~/.ssh/chat_vm"
+}
+
 # Let's Encrypt TLS/HTTPS Configuration
 variable "use_letsencrypt" {
   description = "Whether to use Let's Encrypt certificates generated on the instance"

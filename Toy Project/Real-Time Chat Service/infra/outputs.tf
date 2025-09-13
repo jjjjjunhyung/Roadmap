@@ -61,7 +61,7 @@ output "container_repository_app" {
 # Connection and access information
 output "ssh_connection_command" {
   description = "SSH connection command for the compute instance"
-  value       = "ssh -i ${var.private_key_path} ubuntu@${oci_core_public_ip.chat_server_public_ip.ip_address}"
+  value       = "ssh -i ${var.ssh_private_key_path} ubuntu@${oci_core_public_ip.chat_server_public_ip.ip_address}"
 }
 
 output "application_url" {
@@ -79,7 +79,7 @@ output "letsencrypt_setup_instructions" {
   description = "Instructions for Let's Encrypt certificate setup"
   value = var.use_letsencrypt ? [
     "1. Wait 5 minutes after instance launch for Let's Encrypt setup to start",
-    "2. Check progress: ssh -i ${var.private_key_path} ubuntu@${oci_core_public_ip.chat_server_public_ip.ip_address} 'tail -f /var/log/letsencrypt-setup.log'",
+    "2. Check progress: ssh -i ${var.ssh_private_key_path} ubuntu@${oci_core_public_ip.chat_server_public_ip.ip_address} 'tail -f /var/log/letsencrypt-setup.log'",
     "3. Certificates will be stored in /opt/letsencrypt/ on the instance",
     "4. Auto-renewal is configured for every Sunday at 2 AM",
     "5. Load balancer will initially use placeholder certificates until Let's Encrypt setup completes"
@@ -90,7 +90,7 @@ output "certificate_update_instructions" {
   description = "Instructions for updating load balancer with Let's Encrypt certificates"
   value = var.use_letsencrypt ? [
     "After Let's Encrypt certificates are generated:",
-    "1. Copy certificates from instance: scp -i ${var.private_key_path} ubuntu@${oci_core_public_ip.chat_server_public_ip.ip_address}:/opt/letsencrypt/* ./",
+    "1. Copy certificates from instance: scp -i ${var.ssh_private_key_path} ubuntu@${oci_core_public_ip.chat_server_public_ip.ip_address}:/opt/letsencrypt/* ./",
     "2. Update terraform variables with certificate content",
     "3. Run: terraform apply -var='letsencrypt_cert_content=<cert_content>' -var='letsencrypt_key_content=<key_content>'"
   ] : []
