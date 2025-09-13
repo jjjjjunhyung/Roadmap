@@ -24,7 +24,8 @@ instance_memory_in_gbs  = 24
 boot_volume_size_in_gbs = 50
 
 # SSH Key
-ssh_public_key = "ssh-rsa * junhyung@jhcho"
+ssh_public_key = "ssh-ed25519 * chat-vm"
+ssh_private_key_path = "~/.ssh/chat_vm"
 
 # TLS/HTTPS Configuration - Let's Encrypt
 use_letsencrypt    = true
