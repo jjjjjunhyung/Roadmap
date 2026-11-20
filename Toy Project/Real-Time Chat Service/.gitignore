@@ -4,7 +4,13 @@
 .terraform/
 .terraform.lock.hcl
 terraform.tfvars
+*.tfvars
+*.tfvars.*
+!*.tfvars.example
 *.tfplan
+
+# Let's Encrypt certificates / private keys
+letsencrypt/
 
 # OCI credentials
 .oci/
