@@ -37,9 +37,6 @@ resource "oci_core_instance" "chat_server" {
     }))
   }
 
-  # Fault domain (optional for high availability)
-  fault_domain = data.oci_identity_fault_domains.fds.fault_domains[0].name
-
   freeform_tags = local.compute_tags
 
   # Prevent accidental termination
@@ -79,4 +76,10 @@ resource "oci_core_public_ip" "chat_server_public_ip" {
   private_ip_id  = data.oci_core_private_ips.chat_server_private_ips.private_ips[0].id
 
   freeform_tags = local.compute_tags
+
+  # Private IP is stable across instance resizes; ignore re-association churn from the
+  # data source being re-read during an instance shape change.
+  lifecycle {
+    ignore_changes = [private_ip_id]
+  }
 }

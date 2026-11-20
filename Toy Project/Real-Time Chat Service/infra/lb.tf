@@ -41,6 +41,12 @@ resource "oci_load_balancer_backend" "chat_backend" {
   ip_address = data.oci_core_private_ips.chat_server_private_ips.private_ips[0].ip_address
   port       = 80
   weight     = 1
+
+  # Private IP is stable across instance resizes (in-place reboot keeps the same VNIC).
+  # Ignore it so an instance shape change doesn't force a backend destroy/recreate (avoids LB downtime on resize attempts).
+  lifecycle {
+    ignore_changes = [ip_address]
+  }
 }
 
 # Load Balancer 전용 NSG
