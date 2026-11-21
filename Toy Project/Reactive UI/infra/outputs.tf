@@ -29,3 +29,8 @@ output "tunnel_token" {
   value       = data.cloudflare_zero_trust_tunnel_cloudflared_token.web.token
   sensitive   = true
 }
+
+output "site_url" {
+  description = "Used by deploy.sh for the post-deploy health check"
+  value       = "https://${var.domain}"
+}

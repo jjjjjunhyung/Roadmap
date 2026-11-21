@@ -3,7 +3,7 @@
 # Remotely managed (config_src = "cloudflare"): routing lives here, the VM only
 # needs the tunnel token (see deploy/compose.yaml).
 locals {
-  origin_service = "http://web:80" # compose service reachable from the cloudflared container
+  origin_service = "http://web:8080" # compose service "web" (Rust server) seen from cloudflared
   web_hostnames  = [var.domain, "www.${var.domain}"]
 }
 

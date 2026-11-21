@@ -1,14 +1,16 @@
-# Runtime on the VM (/opt/reactive-ui). Nothing is published on the host:
-# traffic arrives only through the Cloudflare Tunnel (cloudflared -> web:80).
+# Runtime on the VM (/opt/reactive-ui), managed by ../deploy.sh.
+# Nothing is published on the host: traffic arrives only through the
+# Cloudflare Tunnel (cloudflared -> web:8080).
 name: reactive-ui
 
 services:
   web:
-    # Placeholder until the real web app replaces it.
-    image: nginx:1.30-alpine
+    # Image built on the Mac and loaded over SSH; deploy.sh sets APP_IMAGE in .env.
+    image: ${APP_IMAGE:?APP_IMAGE must be set in .env}
     restart: unless-stopped
     volumes:
-      - ./web:/usr/share/nginx/html:ro
+      - /data/reactive-ui:/data # SQLite database lives on the block volume
+    stop_grace_period: 10s
 
   cloudflared:
     image: cloudflare/cloudflared:2026.10.7

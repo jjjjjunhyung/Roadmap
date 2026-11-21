@@ -1,0 +1,11 @@
+# Only web/ and server/ sources go into the build context.
+**/node_modules
+**/dist
+**/target
+**/data
+**/.env
+**/.env.*
+infra
+deploy
+*.md
+.git
