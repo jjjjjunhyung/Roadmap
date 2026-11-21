@@ -85,7 +85,8 @@ patterns=(
   "OCI OCID|ocid1\.[a-z0-9]+\.oc1\.[a-z0-9-]*\.[a-z0-9]{20,}"
   "key fingerprint|([0-9a-f]{2}:){15}[0-9a-f]{2}"
   "personal e-mail|[A-Za-z0-9._%+-]+@(naver\.com|gmail\.com|daum\.net|hanmail\.net|kakao\.com|nate\.com|icloud\.com|outlook\.com|hotmail\.com)"
-  "mobile number|01[016789]-?[0-9]{3,4}-?[0-9]{4}"
+  # Standalone numbers only, so hex checksums in lockfiles don't match.
+  "mobile number|[^0-9A-Za-z]01[016789][- .]?[0-9]{3,4}[- .]?[0-9]{4}([^0-9A-Za-z]|$)"
   "AWS access key|AKIA[0-9A-Z]{16}"
   "GitHub token|gh[pousr]_[A-Za-z0-9]{36,}"
   "Slack token|xox[abprs]-[A-Za-z0-9-]{10,}"
@@ -95,9 +96,11 @@ if [[ -s "$ADDED" ]]; then
     rule="${entry%%|*}"; re="${entry#*|}"
     while IFS= read -r hit; do
       loc="$(cut -d: -f1,2 <<<"$hit")"; content="$(cut -d: -f3- <<<"$hit")"
-      match="$(grep -oE -- "$re" <<<"$content" | head -1)"
+      match="$(grep -oE -- "$re" <<<" $content" | head -1 | sed -E 's/^[^0-9A-Za-z-]//')"
       report "$rule" "$loc" "$match"
-    done < <(grep -E -- "^[^:]*:[0-9]+:.*($re)" "$ADDED" || true)
+    # No ':' after the line number here: it doubles as the left boundary for
+    # patterns that start with [^0-9A-Za-z] (BSD grep has no usable ^ inside groups).
+    done < <(grep -E -- "^[^:]*:[0-9]+.*($re)" "$ADDED" || true)
   done
 fi
 
