@@ -18,3 +18,8 @@ variable "domain" {
   description = "Apex domain served through Cloudflare"
   type        = string
 }
+
+variable "ssh_public_key" {
+  description = "SSH public key for the ubuntu user (only applied at instance launch)"
+  type        = string
+}
