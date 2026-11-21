@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Block commits that would publish sensitive values (this repository is public).
+#
+# What is checked (added lines of the staged diff only):
+#   1. Real values read at runtime from local-only files — never stored in this script:
+#      *.tfvars / *.tfvars.* (not *.example), backend.hcl, ~/.oci/config,
+#      the Cloudflare token in the macOS Keychain, and the global git user.email
+#   2. Generic patterns: private key blocks, real OCIDs, key fingerprints,
+#      personal e-mail addresses, Korean mobile numbers, well-known token formats
+#   3. Staged file names that should never be committed (tfvars, tfstate, keys, .env ...)
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+# Skip for a false positive: git commit --no-verify
+set -uo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)" || exit 0
+cd "$ROOT" || exit 0
+
+VALUES="$(mktemp)"; ADDED="$(mktemp)"
+trap 'rm -f "$VALUES" "$ADDED"' EXIT
+
+mask() { # never echo the value itself: first few chars + length only
+  local s="$1" n=${#1}
+  if (( n <= 8 )); then printf '%s' "${s:0:2}*** (${n} chars)"; else printf '%s' "${s:0:3}*** (${n} chars)"; fi
+}
+
+# ---------------------------------------------------------------- 1. local values
+sensitive_keys='ocid|tenancy|user_ocid|compartment|fingerprint|namespace|account_id|zone_id|domain|email|ssh_public_key|token|secret|password|api_key|private_key[^_]|_content'
+while IFS= read -r f; do
+  sed -nE "s/^[[:space:]]*([A-Za-z0-9_]+)[[:space:]]*=[[:space:]]*\"([^\"]+)\".*/\1 \2/p" "$f" |
+    while read -r key val; do
+      [[ "$key" =~ $sensitive_keys ]] || continue
+      [[ "$val" == *'*'* || "$val" == *xxxx* || "$val" == *example* || "$val" == '<'* ]] && continue
+      (( ${#val} >= 6 )) && printf '%s\n' "$val"
+    done
+done < <(find . -path ./.git -prune -o -path '*/.terraform' -prune -o -type f \
+           \( -name '*.tfvars' -o -name '*.tfvars.*' -o -name 'backend.hcl' \) ! -name '*.example' -print 2>/dev/null) >> "$VALUES"
+
+if [[ -f "$HOME/.oci/config" ]]; then
+  sed -nE 's/^(user|tenancy|fingerprint)[[:space:]]*=[[:space:]]*(.+)$/\2/p' "$HOME/.oci/config" >> "$VALUES"
+fi
+if command -v security >/dev/null 2>&1; then
+  security find-generic-password -s cloudflare-api-token -w 2>/dev/null >> "$VALUES" || true
+fi
+personal_email="$(git config --global user.email 2>/dev/null || true)"
+[[ -n "$personal_email" && "$personal_email" != *noreply* ]] && printf '%s\n' "$personal_email" >> "$VALUES"
+sort -u -o "$VALUES" "$VALUES"; sed -i '' '/^$/d' "$VALUES" 2>/dev/null || sed -i '/^$/d' "$VALUES"
+
+# ---------------------------------------------------------------- added lines
+# Format: path:line:content (only lines added by this commit)
+git -c core.quotePath=false diff --cached -U0 --no-color --diff-filter=ACMR | awk '
+  /^\+\+\+ b\// { file = substr($0, 7); sub(/\t$/, "", file); next }
+  /^@@ /        { split($3, a, ","); line = substr(a[1], 2) + 0; next }
+  /^\+/ && !/^\+\+\+/ { print file ":" line ":" substr($0, 2); line++ }
+' > "$ADDED"
+
+found=0
+report() { # $1 = rule, $2 = path:line, $3 = matched text
+  found=1
+  printf '  \033[31m✗\033[0m %-28s %s  (%s)\n' "$1" "$2" "$(mask "$3")"
+}
+
+# ---------------------------------------------------------------- 3. file names
+while IFS= read -r path; do
+  base="${path##*/}"
+  case "$base" in
+    *.example) continue ;;
+    *.tfvars|*.tfvars.*|backend.hcl|*.tfstate|*.tfstate.*|*.tfplan|*.pem|*.key|*.p12|*.pfx|id_rsa*|id_ed25519*|.env|.env.*)
+      found=1; printf '  \033[31m✗\033[0m %-28s %s\n' "local-only file staged" "$path" ;;
+  esac
+done < <(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR)
+
+# ---------------------------------------------------------------- 1. literal values
+if [[ -s "$VALUES" && -s "$ADDED" ]]; then
+  while IFS= read -r val; do
+    while IFS= read -r hit; do
+      report "local secret value" "$(cut -d: -f1,2 <<<"$hit")" "$val"
+    done < <(grep -F -- "$val" "$ADDED" || true)
+  done < "$VALUES"
+fi
+
+# ---------------------------------------------------------------- 2. patterns
+patterns=(
+  "private key block|-----BEGIN [A-Z ]*PRIVATE KEY-----"
+  "OCI OCID|ocid1\.[a-z0-9]+\.oc1\.[a-z0-9-]*\.[a-z0-9]{20,}"
+  "key fingerprint|([0-9a-f]{2}:){15}[0-9a-f]{2}"
+  "personal e-mail|[A-Za-z0-9._%+-]+@(naver\.com|gmail\.com|daum\.net|hanmail\.net|kakao\.com|nate\.com|icloud\.com|outlook\.com|hotmail\.com)"
+  "mobile number|01[016789]-?[0-9]{3,4}-?[0-9]{4}"
+  "AWS access key|AKIA[0-9A-Z]{16}"
+  "GitHub token|gh[pousr]_[A-Za-z0-9]{36,}"
+  "Slack token|xox[abprs]-[A-Za-z0-9-]{10,}"
+)
+if [[ -s "$ADDED" ]]; then
+  for entry in "${patterns[@]}"; do
+    rule="${entry%%|*}"; re="${entry#*|}"
+    while IFS= read -r hit; do
+      loc="$(cut -d: -f1,2 <<<"$hit")"; content="$(cut -d: -f3- <<<"$hit")"
+      match="$(grep -oE -- "$re" <<<"$content" | head -1)"
+      report "$rule" "$loc" "$match"
+    done < <(grep -E -- "^[^:]*:[0-9]+:.*($re)" "$ADDED" || true)
+  done
+fi
+
+if (( found )); then
+  printf '\n\033[31mCommit blocked:\033[0m staged changes contain values that should stay local (public repo).\n'
+  printf 'Move them into an ignored file (*.tfvars, backend.hcl, .env), or if this is a false positive:\n'
+  printf '  git commit --no-verify\n'
+  exit 1
+fi
+exit 0
