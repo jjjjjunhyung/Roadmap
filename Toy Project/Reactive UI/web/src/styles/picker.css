@@ -611,6 +611,44 @@
   background: var(--card);
   box-shadow: var(--shadow-1);
 }
+/* candidate map above the game: a toggle, then the map */
+.cand-map {
+  display: grid;
+  gap: 10px;
+}
+.map-toggle {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--raise);
+  box-shadow: var(--shadow-1);
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.map-toggle svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: #03c75a;
+  stroke-width: 1.6;
+}
+.cand-map .cm-box {
+  height: 240px;
+  animation: cm-open 0.45s var(--spring);
+}
+@keyframes cm-open {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
 /* marker content lives inside the map's own DOM, so these stay global */
 .cm-pin {
   display: flex;
@@ -628,11 +666,27 @@
   border-radius: 50%;
   background: var(--accent);
   color: var(--accent-ink);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
   box-shadow:
     0 0 0 3px #fff,
     0 4px 10px rgb(0 0 0 / 0.25);
+}
+.cm-pin.tap {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.cm-pin.tap span {
+  display: none;
+}
+.cm-pin.tap.show span {
+  display: block;
+}
+.cm-hint {
+  margin-top: -4px;
+  text-align: left;
+  font-size: 12px;
 }
 .cm-pin span {
   padding: 3px 8px;

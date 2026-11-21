@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
-import { CourseMap } from "../components/CourseMap";
+import { CandidateMap, CourseMap } from "../components/Maps";
 import { Itinerary, Masthead, ResultSheet, Ticket, Toast } from "../components/ui";
 import { GAMES } from "../games";
 import { ApiError, type PickView, type Place, errorMessage, pickApi } from "../lib/api";
@@ -177,6 +177,7 @@ function Picker() {
               <span>직접 고르기</span>
             )}
           </p>
+          <CandidateMap key={cur.id} candidates={cur.candidates} indexOf={indexOf} />
           <div className="game">
             <game.Component
               key={`${cur.id}-${attempt}`}
