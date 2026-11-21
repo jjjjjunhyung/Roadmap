@@ -1,28 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { healthQuery } from "../lib/api";
+export const Route = createFileRoute("/")({ component: Landing });
 
-export const Route = createFileRoute("/")({
-  component: Home,
-});
-
-function Home() {
-  const health = useQuery(healthQuery);
-
+/** The bare domain says nothing about any course; everything lives behind a link. */
+function Landing() {
   return (
-    <section className="card">
-      <h1>준비 중이에요</h1>
-      <p className="muted">데이트 일정을 함께 정리하는 공간을 만들고 있어요.</p>
-      <p
-        className="status"
-        data-state={health.isError ? "error" : (health.data?.status ?? "loading")}
-      >
-        {health.isPending && "서버 확인 중…"}
-        {health.isError && "서버에 연결할 수 없어요"}
-        {health.data &&
-          `서버 ${health.data.status} · DB ${health.data.db} · v${health.data.version}`}
-      </p>
-    </section>
+    <main className="page">
+      <header className="masthead">
+        <div className="topline">
+          <span className="for">for you</span>
+        </div>
+        <p className="date">Date</p>
+        <h1>코스를 준비하고 있어</h1>
+        <p className="lede">받은 링크로 들어와 줘.</p>
+      </header>
+    </main>
   );
 }

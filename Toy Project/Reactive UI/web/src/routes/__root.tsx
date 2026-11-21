@@ -1,31 +1,18 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { createRootRouteWithContext, Link, Outlet } from "@tanstack/react-router";
+import { Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 
 interface RouterContext {
   queryClient: QueryClient;
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({
-  component: RootLayout,
+  component: Outlet,
   notFoundComponent: () => (
-    <section className="card">
-      <h2>페이지를 찾을 수 없어요</h2>
-      <Link to="/">처음으로</Link>
-    </section>
+    <main className="page">
+      <div className="message">
+        <h2>페이지를 찾을 수 없어</h2>
+        <p>받은 링크를 다시 확인해 줘.</p>
+      </div>
+    </main>
   ),
 });
-
-function RootLayout() {
-  return (
-    <div className="app">
-      <header className="app-header">
-        <Link to="/" className="brand">
-          Reactive UI
-        </Link>
-      </header>
-      <main className="app-main">
-        <Outlet />
-      </main>
-    </div>
-  );
-}

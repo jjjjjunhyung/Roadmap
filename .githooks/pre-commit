@@ -4,7 +4,7 @@
 # What is checked (added lines of the staged diff only):
 #   1. Real values read at runtime from local-only files — never stored in this script:
 #      *.tfvars / *.tfvars.* (not *.example), backend.hcl, ~/.oci/config,
-#      the Cloudflare token in the macOS Keychain, and the global git user.email
+#      the Cloudflare token and planner key in the macOS Keychain, and the global git user.email
 #   2. Generic patterns: private key blocks, real OCIDs, key fingerprints,
 #      personal e-mail addresses, Korean mobile numbers, well-known token formats
 #   3. Staged file names that should never be committed (tfvars, tfstate, keys, .env ...)
@@ -40,7 +40,9 @@ if [[ -f "$HOME/.oci/config" ]]; then
   sed -nE 's/^(user|tenancy|fingerprint)[[:space:]]*=[[:space:]]*(.+)$/\2/p' "$HOME/.oci/config" >> "$VALUES"
 fi
 if command -v security >/dev/null 2>&1; then
-  security find-generic-password -s cloudflare-api-token -w 2>/dev/null >> "$VALUES" || true
+  for svc in cloudflare-api-token reactive-ui-planner-key; do
+    security find-generic-password -s "$svc" -w 2>/dev/null >> "$VALUES" || true
+  done
 fi
 personal_email="$(git config --global user.email 2>/dev/null || true)"
 [[ -n "$personal_email" && "$personal_email" != *noreply* ]] && printf '%s\n' "$personal_email" >> "$VALUES"

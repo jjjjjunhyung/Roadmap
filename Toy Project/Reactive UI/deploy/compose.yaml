@@ -8,6 +8,9 @@ services:
     # Image built on the Mac and loaded over SSH; deploy.sh sets APP_IMAGE in .env.
     image: ${APP_IMAGE:?APP_IMAGE must be set in .env}
     restart: unless-stopped
+    environment:
+      # Secret path segment of the planner pages (/plan/<key>); stored only in .env
+      PLANNER_KEY: ${PLANNER_KEY:?PLANNER_KEY must be set in .env}
     volumes:
       - /data/reactive-ui:/data # SQLite database lives on the block volume
     stop_grace_period: 10s

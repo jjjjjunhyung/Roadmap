@@ -10,33 +10,63 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PCodeRouteImport } from './routes/p.$code'
+import { Route as PlanKeyIndexRouteImport } from './routes/plan.$key.index'
+import { Route as PlanKeyCourseIdRouteImport } from './routes/plan.$key.$courseId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PCodeRoute = PCodeRouteImport.update({
+  id: '/p/$code',
+  path: '/p/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlanKeyIndexRoute = PlanKeyIndexRouteImport.update({
+  id: '/plan/$key/',
+  path: '/plan/$key/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlanKeyCourseIdRoute = PlanKeyCourseIdRouteImport.update({
+  id: '/plan/$key/$courseId',
+  path: '/plan/$key/$courseId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/p/$code': typeof PCodeRoute
+  '/plan/$key/$courseId': typeof PlanKeyCourseIdRoute
+  '/plan/$key/': typeof PlanKeyIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/p/$code': typeof PCodeRoute
+  '/plan/$key/$courseId': typeof PlanKeyCourseIdRoute
+  '/plan/$key': typeof PlanKeyIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/p/$code': typeof PCodeRoute
+  '/plan/$key/$courseId': typeof PlanKeyCourseIdRoute
+  '/plan/$key/': typeof PlanKeyIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/p/$code' | '/plan/$key/$courseId' | '/plan/$key/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/p/$code' | '/plan/$key/$courseId' | '/plan/$key'
+  id: '__root__' | '/' | '/p/$code' | '/plan/$key/$courseId' | '/plan/$key/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  PCodeRoute: typeof PCodeRoute
+  PlanKeyCourseIdRoute: typeof PlanKeyCourseIdRoute
+  PlanKeyIndexRoute: typeof PlanKeyIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +78,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/p/$code': {
+      id: '/p/$code'
+      path: '/p/$code'
+      fullPath: '/p/$code'
+      preLoaderRoute: typeof PCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/plan/$key/': {
+      id: '/plan/$key/'
+      path: '/plan/$key'
+      fullPath: '/plan/$key/'
+      preLoaderRoute: typeof PlanKeyIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/plan/$key/$courseId': {
+      id: '/plan/$key/$courseId'
+      path: '/plan/$key/$courseId'
+      fullPath: '/plan/$key/$courseId'
+      preLoaderRoute: typeof PlanKeyCourseIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  PCodeRoute: PCodeRoute,
+  PlanKeyCourseIdRoute: PlanKeyCourseIdRoute,
+  PlanKeyIndexRoute: PlanKeyIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

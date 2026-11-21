@@ -3,12 +3,14 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import "./index.css";
+import "./styles/base.css";
+import "./styles/picker.css";
+import "./styles/plan.css";
 import { routeTree } from "./routeTree.gen";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 30_000, retry: 1 },
+    queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false },
   },
 });
 
