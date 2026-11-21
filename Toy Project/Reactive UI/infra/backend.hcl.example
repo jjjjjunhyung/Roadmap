@@ -1,0 +1,5 @@
+bucket              = "terraform-state"
+namespace           = "<object-storage-namespace>" # `terraform output namespace` in ./bootstrap
+key                 = "reactive-ui/terraform.tfstate"
+region              = "ap-chuncheon-1"
+config_file_profile = "DEFAULT"

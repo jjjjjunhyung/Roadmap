@@ -1,0 +1,16 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Variable files hold account identifiers; commit only the examples
+*.tfvars
+!*.tfvars.example
+
+# Backend settings (object storage namespace etc.); commit only the example
+backend.hcl
+
+# OS
+.DS_Store
