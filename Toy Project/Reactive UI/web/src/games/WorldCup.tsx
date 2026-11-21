@@ -1,6 +1,6 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 
-import { Tile } from "../components/ui";
+import { MapChip, Tile } from "../components/ui";
 import type { Kind, Place } from "../lib/api";
 import { burst, haptic, reducedMotion, sfx, shuffle } from "../lib/feel";
 import { aura } from "../lib/look";
@@ -143,20 +143,25 @@ function Contender(props: {
     "--spin": side ? "14deg" : "-14deg",
   } as CSSProperties;
   return (
-    <button
-      ref={refCb}
+    <div
       className={`contender ${state}`}
       style={style}
-      disabled={disabled}
-      aria-label={`${place.name} 고르기`}
       onPointerEnter={onEnter}
       onPointerLeave={onLeave}
-      onClick={onChoose}
     >
-      <div className="r" ref={lean}>
-        <Tile index={index} kind={kind} name={place.name} image={place.image_url} />
-      </div>
-      {place.memo && <span className="memo">{place.memo}</span>}
-    </button>
+      <button
+        ref={refCb}
+        className="pick"
+        disabled={disabled}
+        aria-label={`${place.name} 고르기`}
+        onClick={onChoose}
+      >
+        <div className="r" ref={lean}>
+          <Tile index={index} kind={kind} name={place.name} image={place.image_url} />
+        </div>
+        {place.memo && <span className="memo">{place.memo}</span>}
+      </button>
+      {place.map_url && <MapChip href={place.map_url} />}
+    </div>
   );
 }

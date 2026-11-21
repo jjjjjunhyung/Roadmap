@@ -10,10 +10,11 @@
   align-items: center;
 }
 .for {
-  font-family: var(--italic);
-  font-style: italic;
-  font-size: 19px;
+  font-family: var(--sans);
+  font-size: 14px;
   color: var(--ink-2);
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 .snd {
   width: 36px;
@@ -37,12 +38,12 @@
   opacity: 0;
 }
 .date {
-  font-family: var(--italic);
-  font-style: italic;
+  font-family: var(--sans);
   font-size: clamp(68px, 22vw, 96px);
-  line-height: 0.82;
-  letter-spacing: -0.02em;
+  line-height: 0.9;
+  letter-spacing: -0.055em;
   margin: 6px 0 0;
+  font-weight: 800;
 }
 .date small {
   font-size: 0.26em;
@@ -79,14 +80,16 @@
   border-left: 1px solid var(--line-2);
 }
 .itin .t {
-  font-family: var(--italic);
-  font-style: italic;
-  font-size: 21px;
+  font-family: var(--sans);
+  font-size: 18px;
   line-height: 1;
   display: flex;
   align-items: center;
   gap: 7px;
   min-height: 21px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 .itin .t::after {
   content: "";
@@ -124,7 +127,7 @@
   padding-left: 8px;
 }
 .itin.many .t {
-  font-size: clamp(13px, calc(100cqi / var(--n) / 3.3), 21px);
+  font-size: clamp(12px, calc(100cqi / var(--n) / 4), 18px);
 }
 .itin.many .t::after {
   display: none;
@@ -187,8 +190,8 @@
   align-items: baseline;
 }
 .wc-round {
-  font-family: var(--serif);
-  font-weight: 500;
+  font-family: var(--sans);
+  font-weight: 700;
   font-size: 20px;
   letter-spacing: -0.02em;
 }
@@ -231,24 +234,32 @@
   box-shadow: var(--shadow-1);
   display: grid;
   place-items: center;
-  font-family: var(--italic);
-  font-style: italic;
-  font-size: 16px;
+  font-family: var(--sans);
+  font-size: 13px;
   color: var(--ink-2);
   pointer-events: none;
+  font-weight: 700;
 }
 .contender {
-  border: 0;
-  background: none;
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
   display: grid;
-  gap: 10px;
+  gap: 8px;
+  align-content: start;
+  justify-items: start;
   transition:
     transform 0.6s var(--spring),
     opacity 0.45s,
     filter 0.45s;
+}
+.contender .pick {
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
 }
 .contender .r {
   border-radius: 16px;
@@ -347,13 +358,13 @@
   display: grid;
   place-items: center;
   text-align: center;
-  font-family: var(--italic);
-  font-style: italic;
-  font-size: 15px;
-  line-height: 1.05;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.25;
   color: var(--ink-2);
   pointer-events: none;
   white-space: pre-line;
+  font-weight: 600;
 }
 
 /* ---------- result sheet ---------- */
@@ -403,11 +414,6 @@
   font-size: 13.5px;
 }
 .sheet .map {
-  font-size: 13px;
-  color: var(--ink-2);
-  text-decoration: underline;
-  text-decoration-color: var(--line);
-  text-underline-offset: 4px;
   justify-self: start;
 }
 .actions {
@@ -488,11 +494,11 @@
   border-bottom: 0;
 }
 .ticket .tm {
-  font-family: var(--italic);
-  font-style: italic;
-  font-size: 24px;
+  font-family: var(--sans);
+  font-size: 19px;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
+  font-weight: 700;
 }
 .ticket .what {
   display: grid;
@@ -500,8 +506,8 @@
   gap: 1px;
 }
 .ticket .what b {
-  font-family: var(--serif);
-  font-weight: 500;
+  font-family: var(--sans);
+  font-weight: 600;
   font-size: 17px;
   letter-spacing: -0.02em;
 }
@@ -509,11 +515,9 @@
   font-size: 12.5px;
   color: var(--muted);
 }
-.ticket .what a {
-  font-size: 12.5px;
-  color: var(--ink-2);
-  text-underline-offset: 3px;
-  text-decoration-color: var(--line);
+.ticket .what .map-chip {
+  justify-self: start;
+  margin-top: 4px;
 }
 .ticket .foot {
   padding: 18px 22px 22px;
@@ -541,11 +545,11 @@
     inset 0 0 0 5px color-mix(in srgb, var(--accent) 75%, #000),
     inset 0 0 0 6.5px rgb(255 255 255 / 0.22),
     0 6px 14px -6px color-mix(in srgb, var(--accent) 70%, #000);
-  font-family: var(--italic);
-  font-style: italic;
+  font-family: var(--sans);
   font-size: 30px;
   transform: rotate(-14deg);
   animation: stamp 0.75s 0.4s var(--spring) backwards;
+  font-weight: 800;
 }
 @keyframes stamp {
   from {
@@ -561,4 +565,36 @@
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 0.4s;
+}
+
+/* ---------- map chip: open the place in the map app before choosing ---------- */
+.map-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px 0 8px;
+  border-radius: 999px;
+  background: var(--raise);
+  box-shadow: var(--shadow-1);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.map-chip svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.map-chip.naver svg {
+  stroke: #03c75a;
+}
+.map-chip:active {
+  transform: scale(0.96);
 }

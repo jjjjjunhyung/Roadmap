@@ -55,8 +55,16 @@
   font-size: 21px;
   padding-bottom: 16px;
 }
+.sw-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 28px;
+  padding: 0 4px 4px 8px;
+}
 .sw .memo {
-  padding: 0 8px 6px;
+  min-width: 0;
   font-size: 13px;
   line-height: 1.5;
   color: var(--muted);
@@ -133,14 +141,33 @@
   text-align: left;
   cursor: pointer;
 }
+.choose-wrap {
+  position: relative;
+}
+.choose-wrap .choose {
+  width: 100%;
+}
+.choose-wrap.has-map .choose {
+  padding-right: 112px;
+}
+.choose-wrap .map-chip {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+}
+.choose-wrap .map-chip:active {
+  transform: translateY(-50%) scale(0.96);
+}
 .choose .tile {
   height: 56px;
   border-radius: 11px;
 }
 .choose b {
   display: block;
-  font-family: var(--serif);
-  font-weight: 500;
+  font-family: var(--sans);
+  font-weight: 600;
   letter-spacing: -0.02em;
 }
 .choose small {
@@ -342,8 +369,8 @@
   align-items: center;
   gap: 12px;
   padding: 0 18px;
-  font-family: var(--serif);
-  font-weight: 500;
+  font-family: var(--sans);
+  font-weight: 600;
   font-size: 15.5px;
   letter-spacing: -0.02em;
 }
@@ -435,10 +462,10 @@
   padding: 0;
   background: var(--raise);
   box-shadow: var(--shadow-1);
-  font-family: var(--italic);
-  font-style: italic;
-  font-size: 19px;
+  font-family: var(--sans);
+  font-size: 16px;
   cursor: pointer;
+  font-weight: 700;
 }
 .start.chosen {
   background: var(--ink);
@@ -495,9 +522,9 @@
 .end .f1 {
   border: 1px dashed var(--line);
   color: var(--muted);
-  font-family: var(--italic);
-  font-style: italic;
-  font-size: 18px;
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 600;
 }
 .end .f2 {
   transform: rotateX(180deg);
@@ -511,8 +538,8 @@
   position: relative;
   z-index: 1;
   color: #fff;
-  font-family: var(--serif);
-  font-weight: 500;
+  font-family: var(--sans);
+  font-weight: 600;
   font-size: 11.5px;
   line-height: 1.25;
   letter-spacing: -0.02em;

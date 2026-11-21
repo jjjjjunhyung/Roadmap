@@ -63,8 +63,8 @@
   box-shadow: none;
   border-radius: 0;
   border-bottom: 1px solid var(--line);
-  font-family: var(--serif);
-  font-weight: 500;
+  font-family: var(--sans);
+  font-weight: 700;
   font-size: 26px;
   letter-spacing: -0.025em;
 }
@@ -112,14 +112,15 @@
   text-decoration: none;
 }
 .course-link .d {
-  font-family: var(--italic);
-  font-style: italic;
-  font-size: 30px;
+  font-family: var(--sans);
+  font-size: 24px;
   line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.03em;
 }
 .course-link b {
-  font-family: var(--serif);
-  font-weight: 500;
+  font-family: var(--sans);
+  font-weight: 600;
   letter-spacing: -0.02em;
   display: block;
 }
@@ -206,10 +207,10 @@
   gap: 8px;
 }
 .pstep-head .no {
-  font-family: var(--italic);
-  font-style: italic;
-  font-size: 26px;
+  font-family: var(--sans);
+  font-size: 20px;
   line-height: 1;
+  font-weight: 700;
 }
 .pstep-head .tools {
   display: flex;

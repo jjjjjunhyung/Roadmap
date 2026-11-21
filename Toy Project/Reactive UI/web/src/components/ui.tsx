@@ -48,6 +48,35 @@ export function Tile(props: {
   );
 }
 
+/** Opens the place in the map app. Taps on it never reach the card around it. */
+export function MapChip({ href }: { href: string }) {
+  const naver = /(^|\.)naver\.(me|com)$/.test(hostOf(href));
+  return (
+    <a
+      className={`map-chip${naver ? " naver" : ""}`}
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 21.5s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z" />
+        <circle cx="12" cy="10.5" r="2.3" />
+      </svg>
+      {naver ? "네이버 지도" : "지도"}
+    </a>
+  );
+}
+
+const hostOf = (href: string) => {
+  try {
+    return new URL(href).hostname;
+  } catch {
+    return "";
+  }
+};
+
 export function SoundToggle() {
   const [on, setOn] = useState(sound.on);
   return (
@@ -156,9 +185,9 @@ export function ResultSheet(props: {
           </div>
         </div>
         {place.map_url && (
-          <a className="map" href={place.map_url} target="_blank" rel="noopener noreferrer">
-            지도에서 보기
-          </a>
+          <div className="map">
+            <MapChip href={place.map_url} />
+          </div>
         )}
         <div className="actions">
           {rerollsLeft !== null && rerollsLeft > 0 && (
@@ -207,11 +236,7 @@ export function Ticket({
               <span className="label">{s.label}</span>
               <b>{s.picked?.name}</b>
               {s.picked?.memo && <span className="memo">{s.picked.memo}</span>}
-              {s.picked?.map_url && (
-                <a href={s.picked.map_url} target="_blank" rel="noopener noreferrer">
-                  지도
-                </a>
-              )}
+              {s.picked?.map_url && <MapChip href={s.picked.map_url} />}
             </span>
           </li>
         ))}

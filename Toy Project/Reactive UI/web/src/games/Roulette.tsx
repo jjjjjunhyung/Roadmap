@@ -36,7 +36,7 @@ export function Roulette({ candidates, indexOf, onPicked }: GameProps) {
   const hubRef = useRef<HTMLDivElement>(null);
   const spinRef = useRef<() => void>(() => {});
   const pickedRef = useRef(onPicked);
-  const [hub, setHub] = useState("grab\n& spin");
+  const [hub, setHub] = useState("잡고\n돌려 줘");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export function Roulette({ candidates, indexOf, onPicked }: GameProps) {
     const seg = TAU / N;
     const C = 320;
     const R = 320;
-    const serif = getComputedStyle(document.documentElement).getPropertyValue("--serif").trim();
+    const font = getComputedStyle(document.documentElement).getPropertyValue("--sans").trim();
     const reduce = reducedMotion();
     let angle = -Math.PI / 2 - seg / 2;
     let vel = 0;
@@ -125,7 +125,7 @@ export function Roulette({ candidates, indexOf, onPicked }: GameProps) {
         ctx.shadowColor = "rgba(0,0,0,.45)";
         ctx.shadowBlur = im?.complete && im.naturalWidth ? 8 : 0;
         ctx.fillStyle = "rgba(255,255,255,.96)";
-        ctx.font = `500 26px ${serif}`;
+        ctx.font = `500 26px ${font}`;
         ctx.textAlign = "right";
         ctx.textBaseline = "middle";
         let s = c.name;

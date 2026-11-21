@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 
-import { Tile } from "../components/ui";
+import { MapChip, Tile } from "../components/ui";
 import type { Place } from "../lib/api";
 import { burst, haptic, reducedMotion, sfx, shuffle } from "../lib/feel";
 import { aura } from "../lib/look";
@@ -167,7 +167,12 @@ export function Swipe({ candidates, kind, indexOf, onPicked }: GameProps) {
             onPointerCancel={d === 0 ? up : undefined}
           >
             <Tile index={indexOf(p)} kind={kind} name={p.name} image={p.image_url} />
-            {p.memo && <span className="memo">{p.memo}</span>}
+            {(p.memo || p.map_url) && (
+              <div className="sw-foot">
+                <span className="memo">{p.memo}</span>
+                {p.map_url && d === 0 && <MapChip href={p.map_url} />}
+              </div>
+            )}
             <span className="stamp yes">Yes</span>
             <span className="stamp no">Pass</span>
           </div>
@@ -215,13 +220,16 @@ function ChooseRow(props: { place: Place; index: number; onChoose: (el: Element)
   const ref = useRef<HTMLButtonElement>(null);
   useReactive(ref, { tilt: 5, magnet: 4 });
   return (
-    <button ref={ref} className="choose r" onClick={(e) => onChoose(e.currentTarget)}>
-      <Tile index={index} showIndex={false} image={place.image_url} />
-      <span>
-        <b>{place.name}</b>
-        {place.memo && <small>{place.memo}</small>}
-      </span>
-      <span className="glare" />
-    </button>
+    <div className={`choose-wrap${place.map_url ? " has-map" : ""}`}>
+      <button ref={ref} className="choose r" onClick={(e) => onChoose(e.currentTarget)}>
+        <Tile index={index} showIndex={false} image={place.image_url} />
+        <span>
+          <b>{place.name}</b>
+          {place.memo && <small>{place.memo}</small>}
+        </span>
+        <span className="glare" />
+      </button>
+      {place.map_url && <MapChip href={place.map_url} />}
+    </div>
   );
 }
