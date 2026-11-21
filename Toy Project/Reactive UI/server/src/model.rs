@@ -41,6 +41,8 @@ pub struct Candidate {
     pub memo: String,
     pub map_url: String,
     pub image_url: String,
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,7 +74,7 @@ macro_rules! step_cols {
 }
 macro_rules! cand_cols {
     () => {
-        "c.id, c.step_id, c.position, c.name, c.memo, c.map_url, c.image_url"
+        "c.id, c.step_id, c.position, c.name, c.memo, c.map_url, c.image_url, c.lat, c.lng"
     };
 }
 

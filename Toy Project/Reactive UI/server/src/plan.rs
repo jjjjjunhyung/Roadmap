@@ -506,10 +506,12 @@ async fn add_candidate(
     let memo = v::optional_text(p.memo.as_deref().unwrap_or(""), "메모", 80)?;
     let map_url = v::map_url(p.map_url.as_deref().unwrap_or(""))?;
     // the Naver lookup is a network call: do it before taking the write lock
+    let place = naver::place(&map_url).await;
     let image_url = match p.image_url.as_deref().map(str::trim) {
         Some(x) if !x.is_empty() => v::image_url(x)?,
-        _ => naver::first_photo(&map_url).await,
+        _ => place.first_photo(),
     };
+    let (lat, lng) = place.at.unzip();
     let mut tx = st.db.begin().await?;
     let course_id = model::step_course(&mut tx, &step_id).await?;
     let count: i64 = sqlx::query_scalar(
@@ -528,7 +530,7 @@ async fn add_candidate(
     .fetch_one(&mut *tx)
     .await?;
     sqlx::query(
-        "INSERT INTO candidates (step_id, position, name, memo, map_url, image_url) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO candidates (step_id, position, name, memo, map_url, image_url, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&step_id)
     .bind(next)
@@ -536,6 +538,8 @@ async fn add_candidate(
     .bind(&memo)
     .bind(&map_url)
     .bind(&image_url)
+    .bind(lat)
+    .bind(lng)
     .execute(&mut *tx)
     .await?;
     model::touch(&mut tx, &course_id).await?;
@@ -557,22 +561,34 @@ async fn update_candidate(
     Path(cand_id): Path<String>,
     Json(p): Json<CandidateInput>,
 ) -> Result<Json<CourseFull>> {
-    // Work out the photo before the transaction: the Naver lookup is a network call.
-    let (old_map, old_image): (String, String) =
-        sqlx::query_as("SELECT map_url, image_url FROM candidates WHERE id = ?")
+    // Work out photo and location before the transaction: the Naver lookup is a network call.
+    type Old = (String, String, Option<f64>, Option<f64>);
+    let (old_map, old_image, old_lat, old_lng): Old =
+        sqlx::query_as("SELECT map_url, image_url, lat, lng FROM candidates WHERE id = ?")
             .bind(&cand_id)
             .fetch_optional(&st.db)
             .await?
             .ok_or(AppError::NotFound("후보를 찾을 수 없어"))?;
     let new_map = p.map_url.as_deref().map(v::map_url).transpose()?;
+    let moved = new_map.as_ref().is_some_and(|m| *m != old_map);
+    // read the place for a new link, or to fill in a location it never had
+    let place = match &new_map {
+        Some(link) if moved || old_lat.is_none() => Some(naver::place(link).await),
+        _ => None,
+    };
     let image_url = match p.image_url.as_deref().map(str::trim) {
         Some("") => String::new(),
         Some(x) => v::image_url(x)?,
         // a new place: its old photo no longer fits
-        None if new_map.as_ref().is_some_and(|m| *m != old_map) => {
-            naver::first_photo(new_map.as_deref().unwrap_or_default()).await
-        }
+        None if moved => place
+            .as_ref()
+            .map(naver::Place::first_photo)
+            .unwrap_or_default(),
         None => old_image,
+    };
+    let (lat, lng) = match &place {
+        Some(pl) => pl.at.unzip(),
+        None => (old_lat, old_lng),
     };
     let mut tx = st.db.begin().await?;
     let (course_id, _) = model::candidate_owner(&mut tx, &cand_id).await?;
@@ -594,12 +610,14 @@ async fn update_candidate(
         None => map_url,
     };
     sqlx::query(
-        "UPDATE candidates SET name = ?, memo = ?, map_url = ?, image_url = ? WHERE id = ?",
+        "UPDATE candidates SET name = ?, memo = ?, map_url = ?, image_url = ?, lat = ?, lng = ? WHERE id = ?",
     )
     .bind(&name)
     .bind(&memo)
     .bind(&map_url)
     .bind(&image_url)
+    .bind(lat)
+    .bind(lng)
     .bind(&cand_id)
     .execute(&mut *tx)
     .await?;
@@ -630,7 +648,7 @@ async fn candidate_photos(
             .fetch_one(&mut *conn)
             .await?
     };
-    Ok(Json(naver::photos(&map_url).await))
+    Ok(Json(naver::place(&map_url).await.photos))
 }
 
 async fn remove_candidate(

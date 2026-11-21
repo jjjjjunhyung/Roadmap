@@ -1,4 +1,4 @@
-//! Food photos for a candidate from its Naver Map link.
+//! Food photos and the location of a candidate, from its Naver Map link.
 //!
 //! A Naver place page embeds its data as JSON: the menu (with the photos the place uploaded) and
 //! the top photo strip (visitors' photos, tagged by what they show). We read that page the way a
@@ -45,28 +45,37 @@ pub fn is_naver(link: &str) -> bool {
         .is_some_and(|h| h == "naver.me" || h == "naver.com" || h.ends_with(".naver.com"))
 }
 
-/// Food photos for the place behind a Naver Map link, best first. Empty for any other link.
-pub async fn photos(link: &str) -> Vec<Photo> {
+/// What a place page tells us.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Place {
+    /// Food photos, best first.
+    pub photos: Vec<Photo>,
+    /// (latitude, longitude)
+    pub at: Option<(f64, f64)>,
+}
+
+impl Place {
+    /// The photo a new candidate starts with, or "".
+    pub fn first_photo(&self) -> String {
+        self.photos
+            .first()
+            .map(|p| p.url.clone())
+            .unwrap_or_default()
+    }
+}
+
+/// The place behind a Naver Map link. Empty for any other link, or when the page can't be read.
+pub async fn place(link: &str) -> Place {
     if !is_naver(link) {
-        return Vec::new();
+        return Place::default();
     }
     fetch(link).await.unwrap_or_else(|e| {
-        tracing::warn!("naver photos for {link}: {e:#}");
-        Vec::new()
+        tracing::warn!("naver place for {link}: {e:#}");
+        Place::default()
     })
 }
 
-/// The photo a new candidate starts with, or "" when there is none.
-pub async fn first_photo(link: &str) -> String {
-    photos(link)
-        .await
-        .into_iter()
-        .next()
-        .map(|p| p.url)
-        .unwrap_or_default()
-}
-
-async fn fetch(link: &str) -> anyhow::Result<Vec<Photo>> {
+async fn fetch(link: &str) -> anyhow::Result<Place> {
     let client = CLIENT.as_ref().context("http client unavailable")?;
     let id = match place_id(link) {
         Some(id) => id,
@@ -134,10 +143,12 @@ fn place_id(link: &str) -> Option<String> {
 }
 
 /// Photos found in a place page: menu photos, then visitors' food photos, then the place's
-/// own top photos; the og:image when the embedded data is missing.
-fn parse(html: &str) -> Vec<Photo> {
+/// own top photos; the og:image when the embedded data is missing. Plus its coordinates.
+fn parse(html: &str) -> Place {
     let mut found = Found::default();
+    let mut at = None;
     if let Some(Value::Object(state)) = embedded_state(html) {
+        at = entries(&state, "PlaceDetailBase:").find_map(|v| coordinate(&v["coordinate"]));
         for menu in entries(&state, "PlaceMenuItem:") {
             if let Some(src) = menu["images"][0]["url"].as_str() {
                 let name = menu["name"].as_str().unwrap_or_default().trim();
@@ -175,7 +186,18 @@ fn parse(html: &str) -> Vec<Photo> {
     {
         found.push(&src, "대표 사진".into());
     }
-    found.0
+    Place {
+        photos: found.0,
+        at,
+    }
+}
+
+/// `{"x": "127.03", "y": "37.51"}` (strings or numbers) → (lat, lng), if plausible.
+fn coordinate(c: &Value) -> Option<(f64, f64)> {
+    let num = |v: &Value| v.as_f64().or_else(|| v.as_str()?.trim().parse().ok());
+    let (lng, lat) = (num(&c["x"])?, num(&c["y"])?);
+    ((-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lng) && (lat, lng) != (0.0, 0.0))
+        .then_some((lat, lng))
 }
 
 #[derive(Default)]
@@ -277,6 +299,7 @@ mod tests {
     #[test]
     fn lists_menu_then_visitor_food_then_own_photos() {
         let html = r#"<html><script>window.__APOLLO_STATE__ = {
+            "PlaceDetailBase:1": {"name": "가게", "coordinate": {"x": "126.9779692", "y": "37.5662952"}},
             "PlaceMenuItem:a": {"name": "간짜장", "images": [{"url": "https://ldb-phinf.pstatic.net/a.jpg"}]},
             "PlaceMenuItem:b": {"name": "짬뽕", "images": []},
             "PlaceDetailTopPhotoItem:1_business_1": {"id": "1_business_1", "mediaFormat": "image", "subFilterId": null, "originalUrl": "https://pup-review-phinf.pstatic.net/b.jpg"},
@@ -287,6 +310,8 @@ mod tests {
             "PlaceDetailTopPhotoItem:1_visitor_4": {"id": "1_visitor_4", "mediaFormat": "image", "subFilterId": "FOOD", "originalUrl": "https://ldb-phinf.pstatic.net/a.jpg"}
         };</script></html>"#;
         let got = parse(html);
+        assert_eq!(got.at, Some((37.5662952, 126.9779692)));
+        let got = got.photos;
         let labels: Vec<&str> = got.iter().map(|p| p.label.as_str()).collect();
         assert_eq!(
             labels,
@@ -302,11 +327,13 @@ mod tests {
     fn falls_back_to_og_image() {
         let html = r#"<meta property="og:image" content="https://search.pstatic.net/common/?type=f640_380&amp;src=https%3A%2F%2Fldb-phinf.pstatic.net%2Fz.jpg"/>"#;
         let got = parse(html);
+        assert_eq!(got.at, None);
+        let got = got.photos;
         assert_eq!(got.len(), 1);
         assert_eq!(
             got[0].url,
             "https://search.pstatic.net/common/?type=f640_640&src=https%3A%2F%2Fldb-phinf.pstatic.net%2Fz.jpg"
         );
-        assert!(parse("<html></html>").is_empty());
+        assert_eq!(parse("<html></html>"), Place::default());
     }
 }

@@ -11,6 +11,8 @@ services:
     environment:
       # Secret path segment of the planner pages (/plan/<key>); stored only in .env
       PLANNER_KEY: ${PLANNER_KEY:?PLANNER_KEY must be set in .env}
+      # Naver Maps (NCP Maps > Application > Client ID); the course map is hidden when empty
+      NAVER_MAP_CLIENT_ID: ${NAVER_MAP_CLIENT_ID:-}
     volumes:
       - /data/reactive-ui:/data # SQLite database lives on the block volume
     stop_grace_period: 10s

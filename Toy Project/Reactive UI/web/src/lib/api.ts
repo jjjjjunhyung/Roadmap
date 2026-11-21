@@ -11,6 +11,9 @@ export interface Place {
   map_url: string;
   /** "" when the card has no photo */
   image_url: string;
+  /** from the Naver Map link; null when unknown */
+  lat: number | null;
+  lng: number | null;
 }
 
 export interface StepSummary {
@@ -51,6 +54,8 @@ export interface Candidate {
   memo: string;
   map_url: string;
   image_url: string;
+  lat: number | null;
+  lng: number | null;
 }
 
 /** A photo the planner can choose for a candidate (from its Naver Map link). */
@@ -133,6 +138,14 @@ async function request<T>(
   }
   return data as T;
 }
+
+export interface ClientConfig {
+  naver_map_client_id: string | null;
+}
+
+export const configApi = {
+  get: () => request<ClientConfig>("GET", "/config"),
+};
 
 export const pickApi = {
   view: (code: string) => request<PickView>("GET", `/pick/${encodeURIComponent(code)}`),

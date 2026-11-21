@@ -29,6 +29,9 @@ pub struct AppState {
     pub revision: Arc<str>,
     /// Secret path segment for the planner pages; planner API is closed when unset.
     pub planner_key: Option<Arc<str>>,
+    /// Client ID for Naver's map script. Public by design (it sits in the page and only works
+    /// on registered domains), but kept out of the repo; the course map is hidden without it.
+    pub naver_map_client_id: Option<Arc<str>>,
 }
 
 pub async fn open_database(url: &str) -> anyhow::Result<SqlitePool> {
@@ -67,6 +70,7 @@ pub async fn open_database(url: &str) -> anyhow::Result<SqlitePool> {
 pub fn router(state: AppState, static_dir: Option<&Path>) -> Router {
     let api = Router::new()
         .route("/health", get(health))
+        .route("/config", get(config))
         .nest("/plan", plan::router(state.clone()))
         .nest("/pick", pick::router())
         .fallback(|| async { StatusCode::NOT_FOUND });
@@ -80,6 +84,18 @@ pub fn router(state: AppState, static_dir: Option<&Path>) -> Router {
     app.layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+/// Settings the web app needs at runtime.
+#[derive(Serialize)]
+struct ClientConfig {
+    naver_map_client_id: Option<Arc<str>>,
+}
+
+async fn config(State(state): State<AppState>) -> Json<ClientConfig> {
+    Json(ClientConfig {
+        naver_map_client_id: state.naver_map_client_id.clone(),
+    })
 }
 
 #[derive(Serialize)]

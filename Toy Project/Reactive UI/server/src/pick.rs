@@ -31,6 +31,8 @@ pub struct Place {
     memo: String,
     map_url: String,
     image_url: String,
+    lat: Option<f64>,
+    lng: Option<f64>,
 }
 
 impl From<&Candidate> for Place {
@@ -41,6 +43,8 @@ impl From<&Candidate> for Place {
             memo: c.memo.clone(),
             map_url: c.map_url.clone(),
             image_url: c.image_url.clone(),
+            lat: c.lat,
+            lng: c.lng,
         }
     }
 }

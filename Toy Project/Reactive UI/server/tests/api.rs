@@ -19,6 +19,7 @@ async fn app(key: Option<&str>) -> Router {
             db,
             revision: "test".into(),
             planner_key: key.map(Into::into),
+            naver_map_client_id: Some("test-map-id".into()),
         },
         None,
     )
@@ -411,4 +412,29 @@ async fn candidate_photos_are_stored_shown_and_cleared() {
     )
     .await;
     assert_eq!(v, json!([]), "no Naver link, nothing to choose from");
+}
+
+#[tokio::test]
+async fn config_and_locations_reach_the_picker() {
+    let app = app(Some(KEY)).await;
+    let (s, v) = call(&app, Method::GET, "/api/config", None, None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["naver_map_client_id"], "test-map-id");
+
+    // non-Naver links have no location to read
+    let c = seeded(&app).await;
+    let cand = &c["steps"][0]["candidates"][0];
+    assert!(cand["lat"].is_null() && cand["lng"].is_null());
+    let id = c["id"].as_str().unwrap();
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/courses/{id}"),
+        Some(json!({ "status": "open" })),
+    )
+    .await;
+    let code = c["share_code"].as_str().unwrap();
+    let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
+    let first = &v["current"]["candidates"][0];
+    assert!(first.get("lat").is_some() && first["lat"].is_null());
 }

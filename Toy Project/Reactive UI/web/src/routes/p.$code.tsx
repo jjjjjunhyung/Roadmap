@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
+import { CourseMap } from "../components/CourseMap";
 import { Itinerary, Masthead, ResultSheet, Ticket, Toast } from "../components/ui";
 import { GAMES } from "../games";
 import { ApiError, type PickView, type Place, errorMessage, pickApi } from "../lib/api";
@@ -154,7 +155,10 @@ function Picker() {
       <Itinerary steps={v.steps} morph={morph} />
 
       {v.status === "done" ? (
-        <Ticket date={v.date} steps={v.steps} sealRef={sealRef} />
+        <>
+          <Ticket date={v.date} steps={v.steps} sealRef={sealRef} />
+          <CourseMap steps={v.steps} />
+        </>
       ) : cur && game ? (
         <section className="stage" aria-live="polite">
           <div className="stage-head">

@@ -50,6 +50,11 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or_else(|_| "dev".into())
             .into(),
         planner_key: config.planner_key.map(Into::into),
+        naver_map_client_id: env::var("NAVER_MAP_CLIENT_ID")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+            .map(Into::into),
     };
     let app = router(state, Some(&config.static_dir));
 
