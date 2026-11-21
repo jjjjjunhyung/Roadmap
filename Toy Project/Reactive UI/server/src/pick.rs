@@ -30,6 +30,7 @@ pub struct Place {
     name: String,
     memo: String,
     map_url: String,
+    image_url: String,
 }
 
 impl From<&Candidate> for Place {
@@ -39,6 +40,7 @@ impl From<&Candidate> for Place {
             name: c.name.clone(),
             memo: c.memo.clone(),
             map_url: c.map_url.clone(),
+            image_url: c.image_url.clone(),
         }
     }
 }

@@ -17,7 +17,7 @@ use crate::{
     AppState,
     error::{AppError, Result, bad},
     model::{self, CourseFull},
-    validate as v,
+    naver, validate as v,
 };
 
 pub fn router(state: AppState) -> Router<AppState> {
@@ -32,6 +32,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/steps/{id}/candidates", post(add_candidate))
         .route("/candidates/{id}", patch(update_candidate))
         .route("/candidates/{id}", delete(remove_candidate))
+        .route("/candidates/{id}/photos", get(candidate_photos))
         .route_layer(middleware::from_fn_with_state(state, require_key))
 }
 
@@ -491,6 +492,9 @@ struct CandidateInput {
     name: Option<String>,
     memo: Option<String>,
     map_url: Option<String>,
+    /// Photo for the card. On add, left out or "" = fill from a Naver Map link. On update,
+    /// "" = no photo; left out = keep it, or refill when the map link changes.
+    image_url: Option<String>,
 }
 
 async fn add_candidate(
@@ -501,6 +505,11 @@ async fn add_candidate(
     let name = v::text(p.name.as_deref().unwrap_or(""), "장소 이름", 30)?;
     let memo = v::optional_text(p.memo.as_deref().unwrap_or(""), "메모", 80)?;
     let map_url = v::map_url(p.map_url.as_deref().unwrap_or(""))?;
+    // the Naver lookup is a network call: do it before taking the write lock
+    let image_url = match p.image_url.as_deref().map(str::trim) {
+        Some(x) if !x.is_empty() => v::image_url(x)?,
+        _ => naver::first_photo(&map_url).await,
+    };
     let mut tx = st.db.begin().await?;
     let course_id = model::step_course(&mut tx, &step_id).await?;
     let count: i64 = sqlx::query_scalar(
@@ -519,13 +528,14 @@ async fn add_candidate(
     .fetch_one(&mut *tx)
     .await?;
     sqlx::query(
-        "INSERT INTO candidates (step_id, position, name, memo, map_url) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO candidates (step_id, position, name, memo, map_url, image_url) VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&step_id)
     .bind(next)
     .bind(&name)
     .bind(&memo)
     .bind(&map_url)
+    .bind(&image_url)
     .execute(&mut *tx)
     .await?;
     model::touch(&mut tx, &course_id).await?;
@@ -547,6 +557,23 @@ async fn update_candidate(
     Path(cand_id): Path<String>,
     Json(p): Json<CandidateInput>,
 ) -> Result<Json<CourseFull>> {
+    // Work out the photo before the transaction: the Naver lookup is a network call.
+    let (old_map, old_image): (String, String) =
+        sqlx::query_as("SELECT map_url, image_url FROM candidates WHERE id = ?")
+            .bind(&cand_id)
+            .fetch_optional(&st.db)
+            .await?
+            .ok_or(AppError::NotFound("후보를 찾을 수 없어"))?;
+    let new_map = p.map_url.as_deref().map(v::map_url).transpose()?;
+    let image_url = match p.image_url.as_deref().map(str::trim) {
+        Some("") => String::new(),
+        Some(x) => v::image_url(x)?,
+        // a new place: its old photo no longer fits
+        None if new_map.as_ref().is_some_and(|m| *m != old_map) => {
+            naver::first_photo(new_map.as_deref().unwrap_or_default()).await
+        }
+        None => old_image,
+    };
     let mut tx = st.db.begin().await?;
     let (course_id, _) = model::candidate_owner(&mut tx, &cand_id).await?;
     let (name, memo, map_url): (String, String, String) =
@@ -566,13 +593,16 @@ async fn update_candidate(
         Some(x) => v::map_url(x)?,
         None => map_url,
     };
-    sqlx::query("UPDATE candidates SET name = ?, memo = ?, map_url = ? WHERE id = ?")
-        .bind(&name)
-        .bind(&memo)
-        .bind(&map_url)
-        .bind(&cand_id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE candidates SET name = ?, memo = ?, map_url = ?, image_url = ? WHERE id = ?",
+    )
+    .bind(&name)
+    .bind(&memo)
+    .bind(&map_url)
+    .bind(&image_url)
+    .bind(&cand_id)
+    .execute(&mut *tx)
+    .await?;
     model::touch(&mut tx, &course_id).await?;
     model::log(
         &mut tx,
@@ -585,6 +615,22 @@ async fn update_candidate(
     let full = model::full(&mut tx, &course_id).await?;
     tx.commit().await?;
     Ok(Json(full))
+}
+
+/// Photos the planner can choose from, read from the candidate's Naver Map link.
+async fn candidate_photos(
+    State(st): State<AppState>,
+    Path(cand_id): Path<String>,
+) -> Result<Json<Vec<naver::Photo>>> {
+    let map_url = {
+        let mut conn = st.db.acquire().await?;
+        model::candidate_owner(&mut conn, &cand_id).await?;
+        sqlx::query_scalar::<_, String>("SELECT map_url FROM candidates WHERE id = ?")
+            .bind(&cand_id)
+            .fetch_one(&mut *conn)
+            .await?
+    };
+    Ok(Json(naver::photos(&map_url).await))
 }
 
 async fn remove_candidate(

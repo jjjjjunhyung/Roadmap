@@ -157,7 +157,7 @@ export function Ladder({ candidates, indexOf, onPicked }: GameProps) {
             <div className="in">
               <div className="f f1">?</div>
               <div className="f f2" aria-hidden={landed !== c}>
-                <Tile index={indexOf(p)} showIndex={false} />
+                <Tile index={indexOf(p)} showIndex={false} image={p.image_url} />
                 <span className="t">{p.name}</span>
               </div>
             </div>

@@ -9,6 +9,8 @@ export interface Place {
   name: string;
   memo: string;
   map_url: string;
+  /** "" when the card has no photo */
+  image_url: string;
 }
 
 export interface StepSummary {
@@ -48,6 +50,13 @@ export interface Candidate {
   name: string;
   memo: string;
   map_url: string;
+  image_url: string;
+}
+
+/** A photo the planner can choose for a candidate (from its Naver Map link). */
+export interface PhotoOption {
+  url: string;
+  label: string;
 }
 
 export interface Step {
@@ -90,7 +99,7 @@ export interface CourseSummary {
 export type StepInput = Partial<
   Pick<Step, "kind" | "label" | "title" | "time" | "game" | "rerolls">
 >;
-export type CandidateInput = Partial<Pick<Candidate, "name" | "memo" | "map_url">>;
+export type CandidateInput = Partial<Pick<Candidate, "name" | "memo" | "map_url" | "image_url">>;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -162,6 +171,7 @@ export function planApi(key: string) {
     updateCandidate: (id: string, body: CandidateInput) =>
       r<CourseFull>("PATCH", `/candidates/${id}`, body),
     removeCandidate: (id: string) => r<CourseFull>("DELETE", `/candidates/${id}`),
+    photos: (id: string) => r<PhotoOption[]>("GET", `/candidates/${id}/photos`),
   };
 }
 

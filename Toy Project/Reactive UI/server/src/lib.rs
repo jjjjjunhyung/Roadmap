@@ -2,6 +2,7 @@
 
 pub mod error;
 mod model;
+mod naver;
 mod pick;
 mod plan;
 pub mod validate;

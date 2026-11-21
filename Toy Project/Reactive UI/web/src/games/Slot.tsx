@@ -107,7 +107,7 @@ export function Slot({ candidates, indexOf, onPicked }: GameProps) {
             >
               {reel.map((p, i) => (
                 <div key={i} aria-hidden={i < order.length || i >= order.length * 2}>
-                  <Tile index={indexOf(p)} showIndex={false} />
+                  <Tile index={indexOf(p)} showIndex={false} image={p.image_url} />
                   <span>{p.name}</span>
                 </div>
               ))}

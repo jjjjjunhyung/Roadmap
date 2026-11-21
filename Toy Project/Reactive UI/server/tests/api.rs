@@ -322,3 +322,93 @@ async fn unknown_links_are_not_found() {
     let (s, _) = call(&app, Method::GET, "/api/nothing", None, None).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn candidate_photos_are_stored_shown_and_cleared() {
+    let app = app(Some(KEY)).await;
+    let c = seeded(&app).await;
+    let cand = c["steps"][0]["candidates"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let photo = "https://search.pstatic.net/common/?type=f640_640&src=https%3A%2F%2Fldb-phinf.pstatic.net%2Fa.jpg";
+
+    let (s, _) = call(
+        &app,
+        Method::PATCH,
+        &format!("/api/plan/candidates/{cand}"),
+        Some(json!({ "image_url": "javascript:alert(1)" })),
+        Some(KEY),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "only https photo links");
+
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/candidates/{cand}"),
+        Some(json!({ "image_url": photo })),
+    )
+    .await;
+    assert_eq!(c["steps"][0]["candidates"][0]["image_url"], photo);
+    // editing other fields keeps the photo
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/candidates/{cand}"),
+        Some(json!({ "memo": "창가" })),
+    )
+    .await;
+    assert_eq!(c["steps"][0]["candidates"][0]["image_url"], photo);
+
+    // the picker gets it with the candidate
+    let id = c["id"].as_str().unwrap();
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/courses/{id}"),
+        Some(json!({ "status": "open" })),
+    )
+    .await;
+    let code = c["share_code"].as_str().unwrap();
+    let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
+    assert_eq!(v["current"]["candidates"][0]["image_url"], photo);
+
+    // a different place drops the old photo (a non-Naver link has none to offer)
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/candidates/{cand}"),
+        Some(json!({ "map_url": "https://map.kakao.com/?q=y" })),
+    )
+    .await;
+    assert_eq!(c["steps"][0]["candidates"][0]["image_url"], "");
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/candidates/{cand}"),
+        Some(json!({ "image_url": photo })),
+    )
+    .await;
+    assert_eq!(c["steps"][0]["candidates"][0]["image_url"], photo);
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/candidates/{cand}"),
+        Some(json!({ "image_url": "" })),
+    )
+    .await;
+    assert_eq!(
+        c["steps"][0]["candidates"][0]["image_url"], "",
+        "empty removes it"
+    );
+
+    let v = plan(
+        &app,
+        Method::GET,
+        &format!("/candidates/{cand}/photos"),
+        None,
+    )
+    .await;
+    assert_eq!(v, json!([]), "no Naver link, nothing to choose from");
+}

@@ -7,6 +7,28 @@ import type { GameProps } from "./types";
 const TAU = Math.PI * 2;
 const mod = (a: number) => ((a % TAU) + TAU) % TAU;
 
+/** Draws `im` filling a square of side `s` centred on (x, y), cropping like object-fit: cover. */
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  im: HTMLImageElement,
+  x: number,
+  y: number,
+  s: number,
+) {
+  const k = Math.min(im.naturalWidth, im.naturalHeight);
+  ctx.drawImage(
+    im,
+    (im.naturalWidth - k) / 2,
+    (im.naturalHeight - k) / 2,
+    k,
+    k,
+    x - s / 2,
+    y - s / 2,
+    s,
+    s,
+  );
+}
+
 /** Grab the wheel and throw it. Momentum + friction; the flapper snaps on every divider. */
 export function Roulette({ candidates, indexOf, onPicked }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -41,6 +63,21 @@ export function Roulette({ candidates, indexOf, onPicked }: GameProps) {
     let phase: "idle" | "coast" | "done" = "idle";
     let lastSeg = -1;
     let resultTimer = 0;
+    // a photo per segment: centred along its bisector, big enough to cover the wedge
+    const photoSize = Math.min(
+      2 * R,
+      Math.max(0.9 * R, 2.2 * R * Math.sin(Math.min(Math.PI / 2, seg / 2))),
+    );
+    const photoAt = N <= 2 ? 0.5 * R : 0.6 * R;
+    const photos = candidates.map((c) => {
+      if (!c.image_url) return null;
+      const im = new Image();
+      im.referrerPolicy = "no-referrer";
+      im.decoding = "async";
+      im.onload = () => draw();
+      im.src = c.image_url;
+      return im;
+    });
     const segAtPointer = () => Math.floor(mod(-Math.PI / 2 - angle) / seg);
 
     const kick = () => {
@@ -70,9 +107,23 @@ export function Roulette({ candidates, indexOf, onPicked }: GameProps) {
         ctx.closePath();
         ctx.fillStyle = g;
         ctx.fill();
+        const im = photos[i];
+        if (im?.complete && im.naturalWidth) {
+          ctx.save();
+          ctx.clip();
+          ctx.translate(C, C);
+          ctx.rotate(a0 + seg / 2 + Math.PI / 2); // photo's top points to the rim
+          drawCover(ctx, im, 0, -photoAt, photoSize);
+          ctx.restore();
+          // keep the names readable over the photo
+          ctx.fillStyle = "rgba(10,12,16,.32)";
+          ctx.fill();
+        }
         ctx.save();
         ctx.translate(C, C);
         ctx.rotate(a0 + seg / 2);
+        ctx.shadowColor = "rgba(0,0,0,.45)";
+        ctx.shadowBlur = im?.complete && im.naturalWidth ? 8 : 0;
         ctx.fillStyle = "rgba(255,255,255,.96)";
         ctx.font = `500 26px ${serif}`;
         ctx.textAlign = "right";
@@ -195,6 +246,7 @@ export function Roulette({ candidates, indexOf, onPicked }: GameProps) {
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(resultTimer);
+      for (const im of photos) if (im) im.onload = null;
       cv.removeEventListener("pointerdown", down);
       cv.removeEventListener("pointermove", move);
       cv.removeEventListener("pointerup", release);

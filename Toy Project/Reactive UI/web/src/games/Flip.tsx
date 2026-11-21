@@ -94,7 +94,7 @@ function FanCard(props: {
           <span className="glare" />
         </span>
         <span className="face front" aria-hidden={!state.includes("open")}>
-          <Tile index={index} name={place.name} showIndex={false} />
+          <Tile index={index} name={place.name} showIndex={false} image={place.image_url} />
         </span>
       </span>
     </button>

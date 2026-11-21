@@ -154,7 +154,7 @@ function Contender(props: {
       onClick={onChoose}
     >
       <div className="r" ref={lean}>
-        <Tile index={index} kind={kind} name={place.name} />
+        <Tile index={index} kind={kind} name={place.name} image={place.image_url} />
       </div>
       {place.memo && <span className="memo">{place.memo}</span>}
     </button>

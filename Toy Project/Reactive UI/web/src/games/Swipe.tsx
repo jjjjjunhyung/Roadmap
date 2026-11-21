@@ -166,7 +166,7 @@ export function Swipe({ candidates, kind, indexOf, onPicked }: GameProps) {
             onPointerUp={d === 0 ? up : undefined}
             onPointerCancel={d === 0 ? up : undefined}
           >
-            <Tile index={indexOf(p)} kind={kind} name={p.name} />
+            <Tile index={indexOf(p)} kind={kind} name={p.name} image={p.image_url} />
             {p.memo && <span className="memo">{p.memo}</span>}
             <span className="stamp yes">Yes</span>
             <span className="stamp no">Pass</span>
@@ -216,7 +216,7 @@ function ChooseRow(props: { place: Place; index: number; onChoose: (el: Element)
   useReactive(ref, { tilt: 5, magnet: 4 });
   return (
     <button ref={ref} className="choose r" onClick={(e) => onChoose(e.currentTarget)}>
-      <Tile index={index} showIndex={false} />
+      <Tile index={index} showIndex={false} image={place.image_url} />
       <span>
         <b>{place.name}</b>
         {place.memo && <small>{place.memo}</small>}

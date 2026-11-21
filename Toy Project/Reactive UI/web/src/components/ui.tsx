@@ -6,19 +6,40 @@ import { auraVars, formatDate, two } from "../lib/look";
 import { Glyph } from "./Glyph";
 import { useReactive } from "../lib/useReactive";
 
-/** Candidate artwork. `index` is the candidate's slot in its step (sets colours and number). */
+/**
+ * Candidate artwork. `index` is the candidate's slot in its step (sets colours and number);
+ * `image` lays a photo over the colours, which stay as the fallback while it loads or if it fails.
+ */
 export function Tile(props: {
   index: number;
   kind?: Kind;
   name?: string;
+  image?: string;
   className?: string;
   style?: CSSProperties;
   showIndex?: boolean;
   ref?: Ref<HTMLDivElement>;
 }) {
-  const { index, kind, name, className = "", style, showIndex = true, ref } = props;
+  const { index, kind, name, image, className = "", style, showIndex = true, ref } = props;
+  const [failed, setFailed] = useState<string | null>(null);
+  const photo = image && image !== failed ? image : "";
   return (
-    <div ref={ref} className={`tile ${className}`} style={{ ...auraVars(index), ...style }}>
+    <div
+      ref={ref}
+      className={`tile${photo ? " has-photo" : ""} ${className}`}
+      style={{ ...auraVars(index), ...style }}
+    >
+      {photo && (
+        <img
+          className="photo"
+          src={photo}
+          alt=""
+          decoding="async"
+          draggable={false}
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(photo)}
+        />
+      )}
       {showIndex && <span className="idx">{two(index)}</span>}
       {kind && <Glyph kind={kind} />}
       {name && <span className="nm">{name}</span>}
@@ -128,7 +149,7 @@ export function ResultSheet(props: {
       <div className="sheet">
         <span className="label">{heading}</span>
         <div className="row" id="morph-src">
-          <Tile ref={tileRef} index={index} kind={kind} className="r" />
+          <Tile ref={tileRef} index={index} kind={kind} image={place.image_url} className="r" />
           <div>
             <h3 id="res-name" ref={nameRef} />
             <p>{place.memo}</p>

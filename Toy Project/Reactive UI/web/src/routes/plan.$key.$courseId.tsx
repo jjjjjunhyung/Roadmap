@@ -10,6 +10,7 @@ import {
   type CourseFull,
   type GameId,
   type Kind,
+  type PhotoOption,
   type Step,
   type StepInput,
   errorMessage,
@@ -398,9 +399,18 @@ function CandidateRow({
   run: Run;
 }) {
   const save = (body: CandidateInput) => run(api.updateCandidate(cand.id, body));
+  const [picking, setPicking] = useState(false);
   return (
     <li className={`cand${chosen ? " chosen" : ""}`}>
-      <Tile index={index} />
+      <button
+        className="cand-photo"
+        aria-expanded={picking}
+        aria-label={`${cand.name} 사진 고르기`}
+        onClick={() => setPicking(!picking)}
+      >
+        <Tile index={index} image={cand.image_url} />
+        <span>사진</span>
+      </button>
       <div className="fields">
         <input
           className="input name"
@@ -433,7 +443,82 @@ function CandidateRow({
       >
         <Icon d={TRASH} />
       </button>
+      {picking && (
+        <PhotoPicker cand={cand} api={api} save={save} onClose={() => setPicking(false)} />
+      )}
     </li>
+  );
+}
+
+/** Photos from the candidate's Naver Map link, plus "paste a link" and "no photo". */
+function PhotoPicker(props: {
+  cand: Candidate;
+  api: Api;
+  save: (body: CandidateInput) => Promise<boolean>;
+  onClose: () => void;
+}) {
+  const { cand, api, save, onClose } = props;
+  const q = useQuery({
+    queryKey: ["photos", cand.id, cand.map_url],
+    queryFn: () => api.photos(cand.id),
+    staleTime: 10 * 60_000,
+  });
+  const choose = async (image_url: string) => {
+    if (await save({ image_url })) onClose();
+  };
+  const options: PhotoOption[] = q.data ?? [];
+  return (
+    <div className="photo-pick">
+      {q.isPending ? (
+        <p className="hint">네이버 지도에서 사진을 찾는 중…</p>
+      ) : q.isError ? (
+        <p className="hint">{errorMessage(q.error)}</p>
+      ) : options.length === 0 ? (
+        <p className="hint">
+          {cand.map_url
+            ? "이 링크에서는 사진을 찾지 못했어. 아래에 사진 링크를 붙여 줘"
+            : "네이버 지도 링크를 넣으면 사진을 찾아 줄게"}
+        </p>
+      ) : (
+        <ul className="photo-grid">
+          {options.map((o) => (
+            <li key={o.url}>
+              <button
+                className={o.url === cand.image_url ? "on" : ""}
+                aria-pressed={o.url === cand.image_url}
+                onClick={() => void choose(o.url)}
+              >
+                <img src={o.url} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                <span>{o.label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <input
+        className="input"
+        placeholder="다른 사진 링크 붙여넣기 (https://…)"
+        inputMode="url"
+        aria-label="사진 링크"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        onBlur={(e) => {
+          const v = e.currentTarget.value.trim();
+          if (v && v !== cand.image_url) void choose(v);
+        }}
+      />
+      <div className="photo-actions">
+        {cand.image_url && (
+          <button className="btn small ghost" onClick={() => void choose("")}>
+            사진 빼기
+          </button>
+        )}
+        <button className="btn small ghost" onClick={onClose}>
+          닫기
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -482,7 +567,7 @@ function AddCandidate({ stepId, api, run }: { stepId: string; api: Api; run: Run
         aria-label="지도 링크"
       />
       <button className="btn small ink" disabled={busy || !name.trim()}>
-        후보 추가
+        {busy ? (mapUrl.includes("naver") ? "사진 찾는 중…" : "추가하는 중…") : "후보 추가"}
       </button>
     </form>
   );

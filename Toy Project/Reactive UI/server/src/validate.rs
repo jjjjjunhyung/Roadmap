@@ -97,6 +97,20 @@ pub fn rerolls(value: i64) -> Result<i64> {
     }
 }
 
+/// Photo link: https only (the pages are https), no whitespace.
+pub fn image_url(value: &str) -> Result<String> {
+    let v = value.trim();
+    if v.to_ascii_lowercase().starts_with("https://")
+        && v.len() > "https://".len()
+        && v.len() <= 800
+        && !v.chars().any(char::is_whitespace)
+    {
+        Ok(v.to_string())
+    } else {
+        Err(bad("사진 링크는 https:// 로 시작하는 주소를 붙여 줘"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,5 +136,8 @@ mod tests {
         assert!(map_url("javascript:alert(1)").is_err());
         assert!(map_url("https://a b").is_err());
         assert_eq!(map_url("  ").unwrap(), "");
+        assert!(image_url("https://search.pstatic.net/common/?type=f640_640").is_ok());
+        assert!(image_url("http://x.com/a.jpg").is_err());
+        assert!(image_url("javascript:alert(1)").is_err());
     }
 }
