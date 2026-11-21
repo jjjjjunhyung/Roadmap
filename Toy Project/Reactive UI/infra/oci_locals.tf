@@ -1,12 +1,17 @@
 locals {
-  # Resources were created by the retired chat-service project and imported here.
-  # Names/tags mirror the originals so the import is a no-op; rename separately
-  # (display names and tags are in-place updates; dns/hostname labels force replacement).
-  legacy_prefix = "chat-service-prod"
+  name_prefix = "reactive-ui"
 
-  legacy_tags = {
+  common_tags = {
     Environment = "prod"
     ManagedBy   = "terraform"
-    Project     = "chat-service"
+    Project     = "reactive-ui"
   }
+
+  # Identifiers inherited from the retired chat-service project that cannot be
+  # renamed in place (changing them would recreate resources):
+  #   - VCN dns_label "chatserviceprod" -> replaces the VCN and everything in it
+  #   - volume attachment display_name  -> detaches /data (mounted via fstab)
+  # Both are internal-only and never exposed outside the VCN / OCI console.
+  legacy_vcn_dns_label          = "chatserviceprod"
+  legacy_volume_attachment_name = "chat-service-prod-data-attachment"
 }

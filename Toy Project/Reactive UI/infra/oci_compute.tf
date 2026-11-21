@@ -11,7 +11,7 @@ data "oci_core_images" "ubuntu" {
 resource "oci_core_instance" "server" {
   compartment_id      = var.tenancy_ocid
   availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
-  display_name        = "${local.legacy_prefix}-server"
+  display_name        = "${local.name_prefix}-server"
   shape               = "VM.Standard.A1.Flex"
 
   shape_config {
@@ -27,8 +27,8 @@ resource "oci_core_instance" "server" {
 
   create_vnic_details {
     subnet_id                 = oci_core_subnet.public.id
-    display_name              = "${local.legacy_prefix}-vnic"
-    hostname_label            = "chat-server" # immutable
+    display_name              = "${local.name_prefix}-vnic"
+    hostname_label            = "reactive-ui" # in-place; OS hostname set separately
     assign_public_ip          = false         # the reserved IP below is attached instead
     assign_private_dns_record = true
     nsg_ids                   = [oci_core_network_security_group.server.id]
@@ -38,7 +38,7 @@ resource "oci_core_instance" "server" {
     ssh_authorized_keys = var.ssh_public_key
   }
 
-  freeform_tags = merge(local.legacy_tags, { Type = "compute" })
+  freeform_tags = merge(local.common_tags, { Type = "compute" })
 
   lifecycle {
     prevent_destroy = true
@@ -56,10 +56,10 @@ resource "oci_core_instance" "server" {
 resource "oci_core_volume" "data" {
   compartment_id      = var.tenancy_ocid
   availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
-  display_name        = "${local.legacy_prefix}-data-volume"
+  display_name        = "${local.name_prefix}-data-volume"
   size_in_gbs         = 100 # boot 50 + data 100 = 150 of the 200 GB Always Free block storage
 
-  freeform_tags = merge(local.legacy_tags, { Type = "storage" })
+  freeform_tags = merge(local.common_tags, { Type = "storage" })
 
   lifecycle {
     prevent_destroy = true
@@ -70,7 +70,7 @@ resource "oci_core_volume_attachment" "data" {
   attachment_type = "paravirtualized"
   instance_id     = oci_core_instance.server.id
   volume_id       = oci_core_volume.data.id
-  display_name    = "${local.legacy_prefix}-data-attachment"
+  display_name    = local.legacy_volume_attachment_name # renaming forces re-attach
   device          = "/dev/oracleoci/oraclevdb"
 }
 
@@ -86,11 +86,11 @@ data "oci_core_private_ips" "server" {
 # Reserved public IP: SSH access and outbound internet for the VM.
 resource "oci_core_public_ip" "server" {
   compartment_id = var.tenancy_ocid
-  display_name   = "${local.legacy_prefix}-public-ip"
+  display_name   = "${local.name_prefix}-public-ip"
   lifetime       = "RESERVED"
   private_ip_id  = data.oci_core_private_ips.server.private_ips[0].id
 
-  freeform_tags = merge(local.legacy_tags, { Type = "compute" })
+  freeform_tags = merge(local.common_tags, { Type = "compute" })
 
   lifecycle {
     prevent_destroy = true
