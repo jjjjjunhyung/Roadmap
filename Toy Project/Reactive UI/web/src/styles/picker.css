@@ -112,6 +112,29 @@
   color: var(--muted);
   font-weight: 400;
 }
+/* five or more steps: narrower columns, the time scales to fit and the current one turns accent
+   instead of carrying a dot */
+.itin.many {
+  container-type: inline-size;
+}
+.itin.many li {
+  padding-right: 4px;
+}
+.itin.many li + li {
+  padding-left: 8px;
+}
+.itin.many .t {
+  font-size: clamp(13px, calc(100cqi / var(--n) / 3.3), 21px);
+}
+.itin.many .t::after {
+  display: none;
+}
+.itin.many li[data-state="current"] .t {
+  color: var(--accent);
+}
+.itin.many .v {
+  font-size: 12px;
+}
 
 /* stage */
 .stage {

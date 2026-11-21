@@ -365,6 +365,7 @@ function StepEditor(props: {
           <span />
         )}
       </div>
+      {game && <p className="game-desc">{game.desc}</p>}
       {picked && <p className="picked">골랐어 · {picked.name}</p>}
       <ul className="cands">
         {step.candidates.map((c, i) => (

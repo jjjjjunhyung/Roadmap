@@ -114,6 +114,19 @@ async fn new_course_gets_template_and_validates_input() {
         .collect();
     assert_eq!(labels, ["식당", "카페", "활동", "저녁"]);
     assert_eq!(c["status"], "draft");
+    let sid = c["steps"][0]["id"].as_str().unwrap();
+    for game in [
+        "worldcup", "swipe", "flip", "roulette", "slot", "ladder", "gacha",
+    ] {
+        let s = plan(
+            &app,
+            Method::PATCH,
+            &format!("/steps/{sid}"),
+            Some(json!({ "game": game })),
+        )
+        .await;
+        assert_eq!(s["steps"][0]["game"], game);
+    }
 
     let (s, v) = call(
         &app,
@@ -142,15 +155,11 @@ async fn new_course_gets_template_and_validates_input() {
         &app,
         Method::PATCH,
         &format!("/api/plan/steps/{sid}"),
-        Some(json!({ "game": "slot" })),
+        Some(json!({ "game": "bingo" })),
         Some(KEY),
     )
     .await;
-    assert_eq!(
-        s,
-        StatusCode::BAD_REQUEST,
-        "games not shipped yet are rejected"
-    );
+    assert_eq!(s, StatusCode::BAD_REQUEST, "unknown games are rejected");
 }
 
 #[tokio::test]

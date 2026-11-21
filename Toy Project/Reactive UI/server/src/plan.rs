@@ -92,8 +92,8 @@ async fn list(State(st): State<AppState>) -> Result<Json<Vec<CourseSummary>>> {
 const TEMPLATE: &[(&str, &str, &str, &str, &str)] = &[
     ("meal", "식당", "점심은 어디서 먹을까", "12:30", "worldcup"),
     ("cafe", "카페", "디저트는 여기서", "14:30", "roulette"),
-    ("play", "활동", "오후엔 뭐 할까", "16:00", "worldcup"),
-    ("dinner", "저녁", "저녁은 뭐 먹을까", "18:30", "roulette"),
+    ("play", "활동", "오후엔 뭐 할까", "16:00", "gacha"),
+    ("dinner", "저녁", "저녁은 뭐 먹을까", "18:30", "swipe"),
 ];
 
 #[derive(Deserialize)]

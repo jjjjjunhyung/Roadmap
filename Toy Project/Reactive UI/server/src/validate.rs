@@ -2,10 +2,12 @@
 
 use crate::error::{Result, bad};
 
-/// Games the web app can play right now. Others are added as they ship.
-pub const GAMES: &[&str] = &["worldcup", "roulette"];
+/// Games the web app can play; keep in step with `web/src/games/index.ts`.
+pub const GAMES: &[&str] = &[
+    "worldcup", "swipe", "flip", "roulette", "slot", "ladder", "gacha",
+];
 /// Games that end on chance and therefore offer "try again".
-pub const LUCK_GAMES: &[&str] = &["roulette"];
+pub const LUCK_GAMES: &[&str] = &["flip", "roulette", "slot", "ladder", "gacha"];
 pub const KINDS: &[&str] = &["meal", "cafe", "play", "dinner", "drink", "walk"];
 
 pub fn text(value: &str, field: &str, max: usize) -> Result<String> {
@@ -98,6 +100,11 @@ pub fn rerolls(value: i64) -> Result<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn luck_games_are_games() {
+        assert!(LUCK_GAMES.iter().all(|g| GAMES.contains(g)));
+    }
 
     #[test]
     fn dates_and_times() {

@@ -1,7 +1,7 @@
 /** Typed client for the Rust API (same origin in production, proxied in dev). */
 
 export type Kind = "meal" | "cafe" | "play" | "dinner" | "drink" | "walk";
-export type GameId = "worldcup" | "roulette";
+export type GameId = "worldcup" | "swipe" | "flip" | "roulette" | "slot" | "ladder" | "gacha";
 export type CourseStatus = "draft" | "open" | "done";
 
 export interface Place {

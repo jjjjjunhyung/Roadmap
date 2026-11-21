@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 
 import "./styles/base.css";
 import "./styles/picker.css";
+import "./styles/games.css";
 import "./styles/plan.css";
 import { routeTree } from "./routeTree.gen";
 

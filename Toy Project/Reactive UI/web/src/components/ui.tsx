@@ -76,8 +76,14 @@ export function Masthead({ date, title, lede }: { date: string; title: string; l
 
 /** Course strip; the step named in `morph` takes part in the shared-element transition. */
 export function Itinerary({ steps, morph }: { steps: StepSummary[]; morph: string | null }) {
+  // five or more steps share a phone's width, so the strip tightens and the words get shorter
+  const many = steps.length > 4;
   return (
-    <ol className="itin" aria-label="코스 진행 상황">
+    <ol
+      className={`itin${many ? " many" : ""}`}
+      style={many ? ({ "--n": steps.length } as CSSProperties) : undefined}
+      aria-label="코스 진행 상황"
+    >
       {steps.map((s) => (
         <li key={s.id} data-state={s.state}>
           <span className="t">{s.time || "—"}</span>
@@ -86,8 +92,12 @@ export function Itinerary({ steps, morph }: { steps: StepSummary[]; morph: strin
             {s.state === "done"
               ? s.picked?.name
               : s.state === "current"
-                ? "고르는 중"
-                : "아직 비밀"}
+                ? many
+                  ? "지금"
+                  : "고르는 중"
+                : many
+                  ? "비밀"
+                  : "아직 비밀"}
           </span>
         </li>
       ))}
