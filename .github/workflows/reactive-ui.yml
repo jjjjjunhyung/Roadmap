@@ -1,0 +1,138 @@
+# Reactive UI: check every change; on main, build the arm64 image and deploy it.
+# Deploy credentials live only in the "production" environment (main branch only).
+# The deploy key is restricted on the VM to `reactive-ui-deploy load|switch|status`.
+# Changes under deploy/ (compose file, VM script) are applied with ./deploy.sh.
+name: reactive-ui
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Toy Project/Reactive UI/web/**"
+      - "Toy Project/Reactive UI/server/**"
+      - "Toy Project/Reactive UI/Dockerfile"
+      - "Toy Project/Reactive UI/.dockerignore"
+      - ".github/workflows/reactive-ui.yml"
+  pull_request:
+    paths:
+      - "Toy Project/Reactive UI/web/**"
+      - "Toy Project/Reactive UI/server/**"
+      - "Toy Project/Reactive UI/Dockerfile"
+      - "Toy Project/Reactive UI/.dockerignore"
+      - ".github/workflows/reactive-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUST_TOOLCHAIN: "1.100" # keep in step with the rust image in the Dockerfile
+
+jobs:
+  check:
+    name: Check (format, lint, types, tests)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # ---- web ---------------------------------------------------------------
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: "Toy Project/Reactive UI/web/package-lock.json"
+      - name: web · install
+        working-directory: "Toy Project/Reactive UI/web"
+        run: |
+          npm install -g "npm@$(node -p 'require("./package.json").devEngines.packageManager.version')" --no-fund --no-audit
+          npm ci --no-fund --no-audit
+      - name: web · vp check (format, lint, type check)
+        working-directory: "Toy Project/Reactive UI/web"
+        run: npx vp check
+      - name: web · build
+        working-directory: "Toy Project/Reactive UI/web"
+        run: npm run build
+
+      # ---- server ------------------------------------------------------------
+      - name: server · toolchain
+        run: |
+          command -v rustup >/dev/null || {
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          }
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$RUST_TOOLCHAIN"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: "Toy Project/Reactive UI/server -> target"
+      - name: server · fmt, clippy, test
+        working-directory: "Toy Project/Reactive UI/server"
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+
+  deploy:
+    name: Build image and deploy
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    environment: production
+    concurrency:
+      group: reactive-ui-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: rev
+        run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: build linux/arm64 image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: "Toy Project/Reactive UI"
+          platforms: linux/arm64
+          build-args: APP_REVISION=${{ steps.rev.outputs.tag }}
+          tags: reactive-ui-app:${{ steps.rev.outputs.tag }}
+          load: true
+          cache-from: type=gha,scope=reactive-ui
+          cache-to: type=gha,mode=max,scope=reactive-ui
+
+      - name: ship image and switch
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          TAG: ${{ steps.rev.outputs.tag }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          vm() { ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_HOST" "$@"; }
+          docker save "reactive-ui-app:$TAG" | gzip -1 | vm load "$TAG"
+          vm switch "$TAG"
+          rm -f ~/.ssh/deploy_key
+
+      - name: health check
+        env:
+          DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+          TAG: ${{ steps.rev.outputs.tag }}
+        run: |
+          for _ in $(seq 1 30); do
+            body=$(curl -fsS -m 5 "$DEPLOY_URL/api/health" || true)
+            if [[ "$body" == *"\"revision\":\"$TAG\""* ]]; then
+              echo "$body"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::health check did not report revision $TAG (last: ${body:-none}). Roll back with ./deploy.sh rollback"
+          exit 1

@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# VM-side deploy entry point, installed as /usr/local/bin/reactive-ui-deploy.
+#
+# Used two ways:
+#   - deploy.sh (admin SSH key):  ssh vm reactive-ui-deploy <command> <tag>
+#   - GitHub Actions (deploy key): forced command in ~/.ssh/authorized_keys, so that
+#     key can run ONLY the commands below (SSH_ORIGINAL_COMMAND carries the request).
+#
+# Commands:
+#   load <tag>     read a gzip'ed `docker save` of reactive-ui-app:<tag> from stdin
+#   switch <tag>   point the web service at that image, restart it, prune old images
+#   status         print the image currently configured
+set -euo pipefail
+
+APP_DIR=/opt/reactive-ui
+DATA_DIR=/data/reactive-ui
+REPO=reactive-ui-app
+KEEP_IMAGES=3
+# Switch history, newest last. Image timestamps are not usable for ordering
+# (cached builds share one), so rollback order and pruning come from here.
+RELEASES="$APP_DIR/releases"
+
+if [[ -n "${SSH_ORIGINAL_COMMAND:-}" ]]; then
+  read -r cmd tag extra <<<"$SSH_ORIGINAL_COMMAND"
+else
+  cmd="${1:-}" tag="${2:-}" extra="${3:-}"
+fi
+
+die() {
+  echo "reactive-ui-deploy: $*" >&2
+  exit 1
+}
+need_tag() {
+  [[ -z "${extra:-}" && "${tag:-}" =~ ^[0-9a-f]{7,40}(-dirty)?$ ]] || die "invalid tag: '${tag:-}'"
+}
+
+case "$cmd" in
+  load)
+    need_tag
+    out="$(gunzip | docker load -q)"
+    echo "$out"
+    # The archive must contain exactly the announced image and nothing else.
+    expected="Loaded image: $REPO:$tag"
+    [[ "$out" == "$expected" ]] || die "archive did not contain only $REPO:$tag"
+    ;;
+  switch)
+    need_tag
+    docker image inspect "$REPO:$tag" >/dev/null 2>&1 || die "image $REPO:$tag is not loaded"
+    [[ -d "$DATA_DIR" ]] || die "$DATA_DIR is missing (run ./deploy.sh once from the Mac)"
+    cd "$APP_DIR"
+    if grep -q '^APP_IMAGE=' .env; then
+      sed -i "s|^APP_IMAGE=.*|APP_IMAGE=$REPO:$tag|" .env
+    else
+      echo "APP_IMAGE=$REPO:$tag" >>.env
+    fi
+    docker compose up -d --remove-orphans
+
+    # Record the switch, keep the last KEEP_IMAGES distinct tags, drop other app images.
+    touch "$RELEASES"
+    { grep -vx "$tag" "$RELEASES" || true; echo "$tag"; } | tail -n "$KEEP_IMAGES" >"$RELEASES.new"
+    mv "$RELEASES.new" "$RELEASES"
+    docker image ls "$REPO" --format '{{.Tag}}' | grep -vxF -f "$RELEASES" |
+      sed "s|^|$REPO:|" | xargs -r docker image rm >/dev/null || true
+    echo "switched to $REPO:$tag"
+    ;;
+  status)
+    grep '^APP_IMAGE=' "$APP_DIR/.env" || echo "APP_IMAGE not set"
+    echo "rollback candidates (newest first):"
+    [[ -f "$RELEASES" ]] && tac "$RELEASES" | sed 's/^/  /'
+    ;;
+  *)
+    die "unknown command '${cmd:-}' (allowed: load <tag> | switch <tag> | status)"
+    ;;
+esac
