@@ -1,6 +1,6 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 
-import { MapChip, Tile } from "../components/ui";
+import { Tile } from "../components/ui";
 import type { Kind, Place } from "../lib/api";
 import { burst, haptic, reducedMotion, sfx, shuffle } from "../lib/feel";
 import { aura } from "../lib/look";
@@ -37,7 +37,7 @@ function settle(s: Bracket): Bracket {
 }
 
 /** Head-to-head bracket. The card you lean toward leans back; its rival flinches. */
-export function WorldCup({ candidates, kind, indexOf, onPicked }: GameProps) {
+export function WorldCup({ candidates, kind, indexOf, onPicked, onFocus }: GameProps) {
   const [b, setB] = useState<Bracket>(() =>
     settle({ round: shuffle(candidates), next: [], i: 0, roundNo: 0 }),
   );
@@ -46,6 +46,11 @@ export function WorldCup({ candidates, kind, indexOf, onPicked }: GameProps) {
   const cardEls = useRef<(HTMLButtonElement | null)[]>([]);
   const timer = useRef(0);
   useEffect(() => () => clearTimeout(timer.current), []);
+  // the pair on screen is what the map highlights
+  useEffect(() => {
+    if (!b.winner)
+      onFocus?.([b.round[b.i]?.id, b.round[b.i + 1]?.id].filter((x) => x !== undefined));
+  }, [b, onFocus]);
 
   const pair = [b.round[b.i], b.round[b.i + 1]];
   const matches = Math.floor(b.round.length / 2);
@@ -161,7 +166,6 @@ function Contender(props: {
         </div>
         {place.memo && <span className="memo">{place.memo}</span>}
       </button>
-      {place.map_url && <MapChip href={place.map_url} />}
     </div>
   );
 }

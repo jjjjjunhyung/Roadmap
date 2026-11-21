@@ -611,36 +611,29 @@
   background: var(--card);
   box-shadow: var(--shadow-1);
 }
-/* candidate map above the game: a toggle, then the map */
+/* candidate map above the game */
 .cand-map {
   display: grid;
-  gap: 10px;
+  gap: 8px;
+}
+.cand-map-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 .map-toggle {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 13px 0 10px;
+  height: 28px;
+  padding: 0 12px;
   border: 0;
   border-radius: 999px;
-  background: var(--raise);
-  box-shadow: var(--shadow-1);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   color: var(--ink-2);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
-.map-toggle svg {
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: #03c75a;
-  stroke-width: 1.6;
-}
 .cand-map .cm-box {
-  height: 240px;
+  height: 270px;
   animation: cm-open 0.45s var(--spring);
 }
 @keyframes cm-open {
@@ -649,51 +642,66 @@
     transform: translateY(-6px);
   }
 }
+.cm-hint {
+  margin: -2px 0 0;
+  text-align: left;
+  font-size: 11.5px;
+}
 /* marker content lives inside the map's own DOM, so these stay global */
 .cm-pin {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-family: var(--sans);
   white-space: nowrap;
-  pointer-events: none;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: opacity 0.25s;
 }
 .cm-pin b {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  flex: none;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--accent);
-  color: var(--accent-ink);
+  color: #fff;
   font-size: 12px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   box-shadow:
-    0 0 0 3px #fff,
-    0 4px 10px rgb(0 0 0 / 0.25);
-}
-.cm-pin.tap {
-  pointer-events: auto;
-  cursor: pointer;
-}
-.cm-pin.tap span {
-  display: none;
-}
-.cm-pin.tap.show span {
-  display: block;
-}
-.cm-hint {
-  margin-top: -4px;
-  text-align: left;
-  font-size: 12px;
+    0 0 0 2.5px #fff,
+    0 3px 8px rgb(0 0 0 / 0.3);
+  transition: transform 0.35s var(--spring);
 }
 .cm-pin span {
-  padding: 3px 8px;
+  padding: 4px 8px;
   border-radius: 8px;
-  background: rgb(255 255 255 / 0.94);
+  background: #fff;
   color: #101318;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
-  box-shadow: 0 2px 6px rgb(0 0 0 / 0.18);
+  letter-spacing: -0.01em;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.12),
+    0 4px 10px rgb(0 0 0 / 0.16);
+}
+/* names that would collide wait for zoom (kept in layout so they can be measured) */
+.cm-pin.quiet span {
+  visibility: hidden;
+}
+.cm-pin.dim {
+  opacity: 0.5;
+}
+.cm-pin.focus b {
+  transform: scale(1.22);
+  box-shadow:
+    0 0 0 3px #fff,
+    0 0 0 5px var(--accent),
+    0 6px 14px rgb(0 0 0 / 0.35);
+}
+.cm-pin.focus span {
+  font-size: 13.5px;
 }

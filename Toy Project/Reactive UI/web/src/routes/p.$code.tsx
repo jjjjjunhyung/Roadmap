@@ -34,6 +34,7 @@ function Picker() {
   const [attempt, setAttempt] = useState(0);
   const [morph, setMorph] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [focus, setFocus] = useState<string[]>([]);
   const sealRef = useRef<HTMLSpanElement>(null);
   const prevStatus = useRef<string | undefined>(undefined);
   const clearToast = useCallback(() => setToast(null), []);
@@ -177,7 +178,7 @@ function Picker() {
               <span>직접 고르기</span>
             )}
           </p>
-          <CandidateMap key={cur.id} candidates={cur.candidates} indexOf={indexOf} />
+          <CandidateMap key={cur.id} candidates={cur.candidates} indexOf={indexOf} focus={focus} />
           <div className="game">
             <game.Component
               key={`${cur.id}-${attempt}`}
@@ -185,6 +186,7 @@ function Picker() {
               kind={cur.kind}
               indexOf={indexOf}
               onPicked={onPicked}
+              onFocus={setFocus}
             />
           </div>
         </section>

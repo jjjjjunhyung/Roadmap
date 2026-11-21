@@ -7,4 +7,6 @@ export interface GameProps {
   indexOf: (p: Place) => number;
   /** report the result; `el` is where the celebration starts */
   onPicked: (p: Place, el: Element | null) => void;
+  /** the places being looked at right now (they stand out on the map) */
+  onFocus?: (ids: string[]) => void;
 }

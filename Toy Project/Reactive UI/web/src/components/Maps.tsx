@@ -11,15 +11,20 @@ interface NaverMap {
     bounds: object,
     margin?: { top: number; right: number; bottom: number; left: number },
   ): void;
+  getProjection(): { fromCoordToOffset(c: LatLng): { x: number; y: number } };
   destroy(): void;
+}
+interface NaverMarker {
+  setZIndex(z: number): void;
 }
 interface NaverMaps {
   Map: new (el: HTMLElement, options: Record<string, unknown>) => NaverMap;
   LatLng: new (lat: number, lng: number) => LatLng;
   LatLngBounds: new (sw: LatLng, ne: LatLng) => { extend(p: LatLng): void };
-  Marker: new (options: Record<string, unknown>) => object;
+  Marker: new (options: Record<string, unknown>) => NaverMarker;
   Polyline: new (options: Record<string, unknown>) => object;
   Point: new (x: number, y: number) => object;
+  Event: { addListener(target: object, type: string, fn: () => void): object };
 }
 declare global {
   interface Window {
@@ -59,20 +64,14 @@ interface Stop {
   color?: string;
 }
 
-/**
- * Numbered pin with the place name; built as DOM so names are never parsed as HTML.
- * With `tapToName` the name stays hidden until the pin is tapped (for crowded maps).
- */
-function pin(stop: Stop, tapToName: boolean) {
+/** Half the badge: the marker is anchored on the badge's centre. */
+const R = 14;
+
+/** Numbered pin with the place name; built as DOM so names are never parsed as HTML. */
+function pin(stop: Stop) {
   const el = document.createElement("div");
-  el.className = tapToName ? "cm-pin tap" : "cm-pin";
-  if (tapToName) {
-    el.title = stop.name;
-    el.addEventListener("click", () => {
-      el.classList.toggle("show");
-      el.parentElement?.style.setProperty("z-index", el.classList.contains("show") ? "200" : "");
-    });
-  }
+  el.className = "cm-pin";
+  el.title = stop.name;
   const b = document.createElement("b");
   b.textContent = stop.no;
   if (stop.color) b.style.background = stop.color;
@@ -81,6 +80,9 @@ function pin(stop: Stop, tapToName: boolean) {
   el.append(b, span);
   return el;
 }
+
+type Box = { x1: number; y1: number; x2: number; y2: number };
+const overlaps = (a: Box, b: Box) => a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
 
 const located = (p: Place | null | undefined): p is Place & { lat: number; lng: number } =>
   !!p && p.lat !== null && p.lng !== null;
@@ -91,12 +93,27 @@ function useClientId() {
 }
 
 /**
- * A Naver map showing `stops`. `route` joins them in order with a dashed line (and labels every
- * pin); without it pins show only their number until tapped.
+ * A Naver map of `stops`. `route` joins them in order with a dashed line. Stops in `focus` are
+ * drawn larger and always named; other names are laid out around them so they never cover a name
+ * or another pin, and wait for the map to be zoomed in (or their pin tapped) when they would.
  */
-function MapView(props: { clientId: string; stops: Stop[]; route: boolean; onFail: () => void }) {
-  const { clientId, stops, route, onFail } = props;
+function MapView(props: {
+  clientId: string;
+  stops: Stop[];
+  route: boolean;
+  focus?: string[];
+  onFail: () => void;
+}) {
+  const { clientId, stops, route, focus = [], onFail } = props;
   const box = useRef<HTMLDivElement>(null);
+  // the live map, so focus changes can restyle it without rebuilding
+  const live = useRef<{
+    pins: HTMLElement[];
+    markers: NaverMarker[];
+    layout: () => void;
+  } | null>(null);
+  const focusRef = useRef<string[]>(focus);
+
   useEffect(() => {
     const el = box.current;
     if (!el || stops.length === 0) return;
@@ -107,29 +124,32 @@ function MapView(props: { clientId: string; stops: Stop[]; route: boolean; onFai
       .then((maps) => {
         if (gone) return;
         const pts = stops.map((s) => new maps.LatLng(s.lat, s.lng));
-        map = new maps.Map(el, {
+        const m = new maps.Map(el, {
           center: pts[0],
           zoom: 16,
           zoomControl: false,
           scaleControl: false,
           mapDataControl: false,
+          // the page scrolls past this map; a wheel over it shouldn't zoom it (pinch still does)
+          scrollWheel: false,
         });
-        stops.forEach(
+        map = m;
+        const pins = stops.map(pin);
+        const markers = stops.map(
           (s, i) =>
             new maps.Marker({
-              map,
+              map: m,
               position: pts[i],
               title: s.name,
-              icon: { content: pin(s, !route), anchor: new maps.Point(13, 13) },
+              icon: { content: pins[i], anchor: new maps.Point(R, R) },
             }),
         );
-        if (pts.length < 2) return;
-        if (route) {
+        if (route && pts.length > 1) {
           const accent = getComputedStyle(document.documentElement)
             .getPropertyValue("--accent")
             .trim();
           new maps.Polyline({
-            map,
+            map: m,
             path: pts,
             strokeColor: accent || "#9b1c34",
             strokeWeight: 3,
@@ -137,22 +157,78 @@ function MapView(props: { clientId: string; stops: Stop[]; route: boolean; onFai
             strokeStyle: "shortdash",
           });
         }
-        const bounds = new maps.LatLngBounds(pts[0], pts[0]);
-        for (const p of pts) bounds.extend(p);
-        // room on the right for the name labels
-        map.fitBounds(
-          bounds,
-          route
-            ? { top: 48, right: 96, bottom: 36, left: 36 }
-            : { top: 36, right: 36, bottom: 36, left: 36 },
-        );
+
+        const layout = () => {
+          const focused = new Set(focusRef.current.filter((id) => stops.some((s) => s.id === id)));
+          const proj = m.getProjection();
+          const at = pts.map((p) => proj.fromCoordToOffset(p));
+          // every badge is an obstacle; names are placed focus first, then in order
+          const badges: Box[] = at.map((p) => ({
+            x1: p.x - R,
+            y1: p.y - R,
+            x2: p.x + R,
+            y2: p.y + R,
+          }));
+          const placed: Box[] = [];
+          const order = stops
+            .map((_, i) => i)
+            .sort(
+              (a, b) =>
+                Number(focused.has(stops[b].id)) - Number(focused.has(stops[a].id)) || a - b,
+            );
+          for (const i of order) {
+            const p = pins[i];
+            const isFocus = focused.has(stops[i].id);
+            p.classList.toggle("focus", isFocus);
+            p.classList.toggle("dim", focused.size > 0 && !isFocus);
+            markers[i].setZIndex(isFocus ? 300 : p.classList.contains("tapped") ? 200 : 100);
+            const label = p.querySelector("span");
+            if (!label) continue;
+            const r: Box = {
+              x1: at[i].x - R + label.offsetLeft,
+              y1: at[i].y - R + label.offsetTop,
+              x2: at[i].x - R + label.offsetLeft + label.offsetWidth,
+              y2: at[i].y - R + label.offsetTop + label.offsetHeight,
+            };
+            const clear =
+              !placed.some((q) => overlaps(q, r)) &&
+              !badges.some((q, j) => j !== i && overlaps(q, r));
+            const show = isFocus || clear || p.classList.contains("tapped");
+            p.classList.toggle("quiet", !show);
+            if (show) placed.push(r);
+          }
+        };
+        for (const p of pins)
+          p.addEventListener("click", () => {
+            p.classList.toggle("tapped");
+            layout();
+          });
+        live.current = { pins, markers, layout };
+        maps.Event.addListener(m, "idle", layout);
+
+        if (pts.length > 1) {
+          const bounds = new maps.LatLngBounds(pts[0], pts[0]);
+          for (const p of pts) bounds.extend(p);
+          // room on the right for the names
+          m.fitBounds(bounds, { top: 40, right: 110, bottom: 40, left: 40 });
+        }
+        layout();
       })
       .catch(onFail);
     return () => {
       gone = true;
+      live.current = null;
       map?.destroy();
     };
   }, [clientId, stops, route, onFail]);
+
+  // restyle for the pair (or card) being looked at now
+  const focusKey = focus.join(",");
+  useEffect(() => {
+    focusRef.current = focusKey ? focusKey.split(",") : [];
+    live.current?.layout();
+  }, [focusKey]);
+
   return <div className="cm-box" ref={box} />;
 }
 
@@ -188,13 +264,17 @@ export function CourseMap({ steps }: { steps: StepSummary[] }) {
 }
 
 /**
- * Where this step's candidates are, folded away until asked for. Pins carry each card's number
- * and colour, so a pin and its card match at a glance.
+ * Where this step's candidates are, open by default. Pins carry each card's number and colour,
+ * and the places being compared right now (`focus`) stand out.
  */
-export function CandidateMap(props: { candidates: Place[]; indexOf: (p: Place) => number }) {
-  const { candidates, indexOf } = props;
+export function CandidateMap(props: {
+  candidates: Place[];
+  indexOf: (p: Place) => number;
+  focus: string[];
+}) {
+  const { candidates, indexOf, focus } = props;
   const clientId = useClientId();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [failed, setFailed] = useState(false);
   const stops = useMemo(
     () =>
@@ -218,17 +298,18 @@ export function CandidateMap(props: { candidates: Place[]; indexOf: (p: Place) =
   if (!clientId || stops.length === 0 || failed) return null;
   return (
     <div className={`cand-map${open ? " open" : ""}`}>
-      <button className="map-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 21.5s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z" />
-          <circle cx="12" cy="10.5" r="2.3" />
-        </svg>
-        {open ? "후보 위치 접기" : `후보 위치 보기 · ${stops.length}곳`}
-      </button>
+      <div className="cand-map-head">
+        <span className="label">후보 위치 · {stops.length}곳</span>
+        <button className="map-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? "접기" : "지도 보기"}
+        </button>
+      </div>
       {open && (
         <>
-          <MapView clientId={clientId} stops={stops} route={false} onFail={fail} />
-          <p className="hint cm-hint">번호는 카드 번호와 같아 · 핀을 누르면 이름이 보여</p>
+          <MapView clientId={clientId} stops={stops} route={false} focus={focus} onFail={fail} />
+          <p className="hint cm-hint">
+            핀 번호는 카드 번호와 같아 · 지금 고르는 곳이 크게 보여 · 핀을 누르면 이름
+          </p>
         </>
       )}
     </div>

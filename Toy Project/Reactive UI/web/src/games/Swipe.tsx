@@ -24,7 +24,7 @@ const CROSS = "M7 7l10 10M17 7L7 17";
  * A deck you thumb through. The card follows your finger with a little rotation and the next
  * one rises as you drag; flick right to keep, left to pass. Then choose among the keepers.
  */
-export function Swipe({ candidates, kind, indexOf, onPicked }: GameProps) {
+export function Swipe({ candidates, kind, indexOf, onPicked, onFocus }: GameProps) {
   const [deck, setDeck] = useState(() => shuffle(candidates));
   const [idx, setIdx] = useState(0);
   const [liked, setLiked] = useState<Place[]>([]);
@@ -34,6 +34,10 @@ export function Swipe({ candidates, kind, indexOf, onPicked }: GameProps) {
   const timer = useRef(0);
   const drag = useRef({ on: false, sx: 0, sy: 0, dx: 0, lastX: 0, lastT: 0, vx: 0 });
   useEffect(() => () => clearTimeout(timer.current), []);
+  // the card on top (or the kept ones, when choosing among them) stands out on the map
+  useEffect(() => {
+    onFocus?.(idx < deck.length ? [deck[idx].id] : liked.map((p) => p.id));
+  }, [deck, idx, liked, onFocus]);
 
   const card = (d: number) => deckRef.current?.querySelector<HTMLElement>(`[data-d="${d}"]`);
 
