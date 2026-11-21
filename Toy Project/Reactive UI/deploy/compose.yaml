@@ -1,0 +1,21 @@
+# Runtime on the VM (/opt/reactive-ui). Nothing is published on the host:
+# traffic arrives only through the Cloudflare Tunnel (cloudflared -> web:80).
+name: reactive-ui
+
+services:
+  web:
+    # Placeholder until the real web app replaces it.
+    image: nginx:1.30-alpine
+    restart: unless-stopped
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.7
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      # From `terraform output -raw tunnel_token`, stored only in /opt/reactive-ui/.env
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN must be set in .env}
+    depends_on:
+      - web

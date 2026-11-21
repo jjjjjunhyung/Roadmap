@@ -19,3 +19,13 @@ output "server_public_ip" {
 output "server_private_ip" {
   value = data.oci_core_private_ips.server.private_ips[0].ip_address
 }
+
+output "tunnel_id" {
+  value = cloudflare_zero_trust_tunnel_cloudflared.web.id
+}
+
+output "tunnel_token" {
+  description = "Goes into TUNNEL_TOKEN in the VM's deploy/.env (never commit it)"
+  value       = data.cloudflare_zero_trust_tunnel_cloudflared_token.web.token
+  sensitive   = true
+}
