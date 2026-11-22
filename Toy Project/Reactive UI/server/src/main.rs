@@ -3,7 +3,7 @@
 use std::{env, net::SocketAddr, path::PathBuf};
 
 use anyhow::Context;
-use reactive_ui_server::{AppState, auth::Auth, open_database, router};
+use reactive_ui_server::{AppState, archive::Archive, open_database, router};
 use tracing_subscriber::EnvFilter;
 
 /// Runtime settings, all from environment variables (defaults suit local development).
@@ -44,16 +44,39 @@ async fn main() -> anyhow::Result<()> {
     if config.planner_key.is_none() {
         tracing::warn!("PLANNER_KEY is not set: the planner API is closed");
     }
-    // the public origin (e.g. https://example.com) the passkeys are bound to
-    let auth = match env::var("PUBLIC_ORIGIN")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-    {
-        Some(origin) => Some(Auth::new(&origin).context("PUBLIC_ORIGIN")?.into()),
-        None => {
-            tracing::warn!("PUBLIC_ORIGIN is not set: passkey sign-in and the archive are closed");
+    let archive = match (
+        env::var("ARCHIVE_PASSCODE").ok(),
+        config.planner_key.as_deref(),
+    ) {
+        (Some(code), Some(key)) if !code.trim().is_empty() => {
+            let a = Archive::new(&code, key);
+            if a.is_none() {
+                tracing::warn!("ARCHIVE_PASSCODE must be 4 to 8 digits: the archive is closed");
+            }
+            let site = env::var("TURNSTILE_SITE_KEY")
+                .ok()
+                .filter(|v| !v.trim().is_empty());
+            let secret = env::var("TURNSTILE_SECRET")
+                .ok()
+                .filter(|v| !v.trim().is_empty());
+            match (a, site, secret) {
+                (Some(a), Some(site), Some(secret)) => Some(a.with_turnstile(&site, &secret)),
+                (Some(a), None, None) => {
+                    tracing::warn!("TURNSTILE_* not set: the passcode form has no bot check");
+                    Some(a)
+                }
+                (Some(_), _, _) => {
+                    anyhow::bail!("set both TURNSTILE_SITE_KEY and TURNSTILE_SECRET")
+                }
+                (None, _, _) => None,
+            }
+            .map(Into::into)
+        }
+        (Some(code), None) if !code.trim().is_empty() => {
+            tracing::warn!("ARCHIVE_PASSCODE needs PLANNER_KEY: the archive is closed");
             None
         }
+        _ => None,
     };
     let state = AppState {
         db: open_database(&config.database_url).await?,
@@ -66,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
             .map(|v| v.trim().to_owned())
             .filter(|v| !v.is_empty())
             .map(Into::into),
-        auth,
+        archive,
     };
     let app = router(state, Some(&config.static_dir));
 

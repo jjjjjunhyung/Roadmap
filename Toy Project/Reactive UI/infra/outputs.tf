@@ -34,3 +34,14 @@ output "site_url" {
   description = "Used by deploy.sh for the post-deploy health check"
   value       = "https://${var.domain}"
 }
+
+output "turnstile_site_key" {
+  description = "Goes into TURNSTILE_SITE_KEY in the VM's .env (public: it is sent to the page)"
+  value       = cloudflare_turnstile_widget.archive.sitekey
+}
+
+output "turnstile_secret" {
+  description = "Goes into TURNSTILE_SECRET in the VM's .env (never commit it)"
+  value       = cloudflare_turnstile_widget.archive.secret
+  sensitive   = true
+}

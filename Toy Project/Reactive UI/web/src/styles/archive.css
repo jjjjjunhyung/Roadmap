@@ -17,66 +17,131 @@
   margin-right: 2px;
 }
 
-/* ---------- sign in (passkey) ---------- */
+/* ---------- lock ---------- */
 .lock .masthead h1 {
   font-size: 28px;
 }
-.enter {
+.pin {
+  position: relative;
+  container-type: inline-size;
+  cursor: text;
+  -webkit-tap-highlight-color: transparent;
+}
+.pin-digits {
+  display: flex;
+  align-items: flex-start;
+  font-size: min(64px, calc(100cqi / var(--cells) * 1.35));
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.pin-group {
   display: grid;
-  gap: 12px;
-  justify-items: start;
+  grid-template-areas: "dot cells" ". name";
 }
-.enter-btn {
-  height: 56px;
-  padding: 0 26px 0 20px;
-  border-radius: 16px;
+.pin-dot {
+  grid-area: dot;
+  padding: 0 0.06em;
+  color: var(--muted);
+}
+.pin-cells {
+  grid-area: cells;
+  display: flex;
+  gap: 0.08em;
+}
+.pin-cell {
+  width: 0.66em;
+  padding-bottom: 0.08em;
+  text-align: center;
+  color: color-mix(in srgb, var(--ink) 12%, transparent);
+  border-bottom: 2px solid var(--line);
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+.pin-cell.on {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+  animation: pin-in 0.42s var(--spring);
+}
+.pin-cell.here {
+  animation: pin-caret 1.1s steps(1) infinite;
+}
+.pin-name {
+  grid-area: name;
+  margin-top: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+.pin.busy .pin-cell.on {
+  animation: pin-wait 0.9s ease-in-out infinite alternate;
+}
+.pin.missed .pin-digits {
+  animation: pin-shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+.pin.waiting .pin-cell {
+  opacity: 0.4;
+}
+.pin.missed .pin-cell {
+  border-bottom-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+}
+/* the real input sits over the digits: it brings up the number pad and takes paste/autofill */
+.pin-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
   font-size: 16px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+  opacity: 0;
 }
-.pk-glyph {
-  width: 24px;
-  height: 24px;
-}
-.enter-hint {
+.pin-hint {
   text-align: left;
-  max-width: 34ch;
-  line-height: 1.55;
+  margin-top: -14px;
 }
-.enter-hint.bad {
+.pin-hint.bad {
   color: var(--accent);
   font-weight: 500;
 }
-.enter-alt {
-  border: 0;
-  background: none;
-  padding: 4px 0;
-  font-size: 13px;
-  color: var(--ink-2);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
+@keyframes pin-in {
+  from {
+    transform: translateY(0.12em) scale(0.86);
+  }
 }
-.enter-alt:disabled {
-  opacity: 0.4;
-  cursor: default;
+@keyframes pin-caret {
+  50% {
+    border-bottom-color: var(--accent);
+  }
 }
-/* in-app browsers: point to the phone's own browser */
-.outside {
-  display: grid;
-  gap: 10px;
-  justify-items: start;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--accent) 9%, var(--raise));
+@keyframes pin-wait {
+  to {
+    opacity: 0.35;
+  }
 }
-.outside p {
-  margin: 0;
-  font-size: 13.5px;
-  line-height: 1.5;
-  color: var(--ink-2);
+@keyframes pin-shake {
+  15%,
+  85% {
+    transform: translateX(-3px);
+  }
+  30%,
+  70% {
+    transform: translateX(6px);
+  }
+  45%,
+  55% {
+    transform: translateX(-8px);
+  }
+  50% {
+    transform: translateX(8px);
+  }
 }
 
 /* ---------- list ---------- */
@@ -196,129 +261,112 @@
   margin-left: auto;
 }
 
-/* ---------- planner: who may open the archive ---------- */
-.people-card {
+@media (prefers-reduced-motion: reduce) {
+  .pin-cell.on,
+  .pin.missed .pin-digits,
+  .pin.busy .pin-cell.on {
+    animation: none;
+  }
+}
+
+/* ---------- planner: the lock's guard ---------- */
+.guard-card {
   display: grid;
-  gap: 16px;
+  gap: 14px;
   padding: 18px;
   border-radius: 18px;
   background: var(--raise);
   box-shadow: var(--shadow-1);
 }
-.people-empty,
-.people-err {
-  margin: 0;
-  font-size: 13px;
-  color: var(--muted);
+.guard-card.locked {
+  box-shadow:
+    inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent),
+    var(--shadow-1);
 }
-.people-err {
-  color: var(--accent);
-}
-.person {
+.guard-head {
   display: grid;
-  gap: 10px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--line-2);
+  gap: 3px;
 }
-.person-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 10px;
-  align-items: center;
-}
-.person-head b {
+.guard-head b {
   font-size: 17px;
   font-weight: 650;
   letter-spacing: -0.02em;
 }
-.person-meta {
-  grid-column: 1;
-  font-size: 12.5px;
+.guard-card.locked .guard-head b {
+  color: var(--accent);
+}
+.guard-meta,
+.guard-empty {
+  margin: 0;
+  font-size: 13px;
   color: var(--muted);
 }
-.person-acts {
-  grid-column: 2;
-  grid-row: 1 / 3;
-  display: flex;
-  gap: 6px;
+.guard-locked {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
 }
-.person-acts .btn {
-  height: 32px;
-  padding: 0 10px;
-  font-size: 12px;
+.guard-locked p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
 }
-.devices {
+.guard-locked .guard-err {
+  color: var(--accent);
+}
+.attempts {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
+  border-top: 1px solid var(--line-2);
 }
-.devices li {
+.attempts li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 78px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  padding: 9px 0;
-  border-top: 1px solid var(--line-2);
-  font-size: 13.5px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-2);
+  font-size: 13px;
 }
-.devices .who {
+.attempts li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.attempts .at {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.attempts .who {
   display: grid;
   min-width: 0;
 }
-.devices .who small {
+.attempts .who small {
   color: var(--muted);
   font-size: 11.5px;
-}
-.devices .btn {
-  height: 30px;
-  padding: 0 10px;
-  font-size: 12px;
-}
-.person-more {
-  justify-self: start;
-  border: 0;
-  background: none;
-  padding: 0;
-  font-size: 12.5px;
-  color: var(--ink-2);
-  cursor: pointer;
-}
-.invite-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-}
-.invite-form .btn {
-  height: 44px;
-}
-.invite-made {
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--accent) 8%, var(--raise));
-}
-.invite-made p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--ink-2);
-}
-.invite-made .link {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-}
-.invite-made code {
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--raise);
+}
+.attempts .res {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.attempts .res.ok {
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+/* Turnstile only takes space when Cloudflare asks for a click */
+.ts-box:empty {
+  display: none;
+}
+.ts-box {
+  margin-top: -8px;
 }

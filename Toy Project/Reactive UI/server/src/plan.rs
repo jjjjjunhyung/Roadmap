@@ -34,7 +34,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/candidates/{id}", patch(update_candidate))
         .route("/candidates/{id}", delete(remove_candidate))
         .route("/candidates/{id}/photos", get(candidate_photos))
-        .merge(crate::auth::planner_router())
+        .merge(crate::archive::planner_router())
         .route_layer(middleware::from_fn_with_state(state, require_key))
 }
 

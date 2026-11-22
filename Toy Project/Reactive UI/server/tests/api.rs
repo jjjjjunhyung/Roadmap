@@ -6,11 +6,12 @@ use axum::{
     http::{Method, Request, StatusCode},
 };
 use http_body_util::BodyExt;
-use reactive_ui_server::{AppState, auth::Auth, open_database, router};
+use reactive_ui_server::{AppState, archive::Archive, open_database, router};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
 const KEY: &str = "test-key";
+const BIRTHDAY: &str = "123456";
 const HOME: &str = "203.0.113.7";
 
 async fn app(key: Option<&str>) -> Router {
@@ -21,7 +22,7 @@ async fn app(key: Option<&str>) -> Router {
             revision: "test".into(),
             planner_key: key.map(Into::into),
             naver_map_client_id: Some("test-map-id".into()),
-            auth: key.map(|_| Auth::new("http://localhost:8080").unwrap().into()),
+            archive: key.and_then(|k| Archive::new(BIRTHDAY, k)).map(Into::into),
         },
         None,
     )
@@ -478,21 +479,17 @@ async fn archive_call(
     )
 }
 
-fn session_of(set_cookie: &str) -> String {
-    set_cookie.split(';').next().unwrap().to_string()
-}
-
 #[tokio::test]
-async fn archive_opens_with_a_session_from_a_link() {
+async fn archive_opens_with_the_birthday_and_lists_shared_courses() {
     let closed = app(None).await;
     let (_, v) = call(&closed, Method::GET, "/api/config", None, None).await;
-    assert_eq!(v["auth"], false);
+    assert!(v["archive_digits"].is_null());
     let (s, _, _) = archive_call(&closed, HOME, Method::GET, "/api/archive", None, None).await;
-    assert_eq!(s, StatusCode::NOT_FOUND, "no origin configured -> closed");
+    assert_eq!(s, StatusCode::NOT_FOUND, "no passcode configured -> closed");
 
     let app = app(Some(KEY)).await;
     let (_, v) = call(&app, Method::GET, "/api/config", None, None).await;
-    assert_eq!(v["auth"], true);
+    assert_eq!(v["archive_digits"], 6);
 
     // one draft (hidden), one shared and finished
     let c = seeded(&app).await;
@@ -530,58 +527,41 @@ async fn archive_opens_with_a_session_from_a_link() {
         Method::GET,
         "/api/archive",
         None,
-        Some("session=forged"),
+        Some("archive=forged"),
     )
     .await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
 
-    // the planner makes a single-use link; the link alone opens a short session
-    let (s, _) = call(
+    // (a miss makes its address wait, so it comes from elsewhere)
+    let (s, set, _) = archive_call(
         &app,
+        "198.51.100.200",
         Method::POST,
-        "/api/plan/invites",
-        Some(json!({ "name": "지원" })),
+        "/api/archive/unlock",
+        Some(json!({ "code": "000000" })),
         None,
     )
     .await;
-    assert_eq!(s, StatusCode::FORBIDDEN, "links are planner-only");
-    let made = plan(
-        &app,
-        Method::POST,
-        "/invites",
-        Some(json!({ "name": "지원" })),
-    )
-    .await;
-    let token = made["token"].as_str().unwrap().to_string();
-    assert_eq!(token.len(), 64);
-    let (s, _, v) = archive_call(
-        &app,
-        HOME,
-        Method::GET,
-        &format!("/api/auth/invite/{token}"),
-        None,
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::OK);
-    assert_eq!(v["name"], "지원");
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    assert!(set.is_none());
 
+    // separators are ignored
     let (s, set, _) = archive_call(
         &app,
         HOME,
         Method::POST,
-        &format!("/api/auth/invite/{token}/enter"),
-        None,
+        "/api/archive/unlock",
+        Some(json!({ "code": "12 34 56" })),
         None,
     )
     .await;
     assert_eq!(s, StatusCode::NO_CONTENT);
     let set = set.unwrap();
     assert!(
-        set.contains("HttpOnly") && set.contains("Path=/api") && set.contains("Secure"),
+        set.contains("HttpOnly") && set.contains("Path=/api/archive"),
         "{set}"
     );
-    let cookie = session_of(&set);
+    let cookie = set.split(';').next().unwrap().to_string();
 
     let (s, _, v) =
         archive_call(&app, HOME, Method::GET, "/api/archive", None, Some(&cookie)).await;
@@ -589,160 +569,108 @@ async fn archive_opens_with_a_session_from_a_link() {
     let list = v.as_array().unwrap();
     assert_eq!(list.len(), 1, "drafts stay hidden: {v}");
     assert_eq!(list[0]["share_code"], code);
+    assert_eq!(list[0]["status"], "done");
     assert_eq!(list[0]["stops"][0]["name"], "장소0-2");
+    assert_eq!(list[0]["stops"][1]["name"], "장소1-2");
     assert!(
         !v.to_string()
             .contains(draft["share_code"].as_str().unwrap())
     );
-    let (_, _, v) =
-        archive_call(&app, HOME, Method::GET, "/api/auth/me", None, Some(&cookie)).await;
-    assert_eq!(v["name"], "지원");
 
-    // a link works once
-    let (s, _, _) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        &format!("/api/auth/invite/{token}/enter"),
-        None,
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::NOT_FOUND);
-    let (s, _, _) = archive_call(
-        &app,
-        HOME,
-        Method::GET,
-        &format!("/api/auth/invite/{token}"),
-        None,
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::NOT_FOUND);
-
-    let people = plan(&app, Method::GET, "/people", None).await;
-    assert_eq!(people[0]["name"], "지원");
-    assert_eq!(people[0]["sessions"], 1);
-    assert_eq!(people[0]["devices"].as_array().unwrap().len(), 0);
-    let person = people[0]["id"].as_str().unwrap().to_string();
-
-    // logging out ends that session
+    // locking clears the cookie
     let (s, set, _) = archive_call(
         &app,
         HOME,
         Method::POST,
-        "/api/auth/logout",
+        "/api/archive/lock",
         None,
         Some(&cookie),
     )
     .await;
     assert_eq!(s, StatusCode::NO_CONTENT);
     assert!(set.unwrap().contains("Max-Age=0"));
-    let (s, _, _) =
-        archive_call(&app, HOME, Method::GET, "/api/archive", None, Some(&cookie)).await;
-    assert_eq!(s, StatusCode::UNAUTHORIZED);
 
-    // the planner can sign a person out everywhere
-    let made = plan(
-        &app,
-        Method::POST,
-        "/invites",
-        Some(json!({ "name": "지원" })),
-    )
-    .await;
-    let t2 = made["token"].as_str().unwrap();
-    assert_eq!(
-        made["people"].as_array().unwrap().len(),
-        1,
-        "same name, same person"
+    let (_, v) = call(&app, Method::GET, "/api/config", None, None).await;
+    assert!(
+        v["turnstile_site_key"].is_null(),
+        "no bot check configured in tests"
     );
-    let (_, set, _) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        &format!("/api/auth/invite/{t2}/enter"),
-        None,
-        None,
-    )
-    .await;
-    let c2 = session_of(&set.unwrap());
-    plan(
-        &app,
-        Method::DELETE,
-        &format!("/people/{person}/sessions"),
-        None,
-    )
-    .await;
-    let (s, _, _) = archive_call(&app, HOME, Method::GET, "/api/archive", None, Some(&c2)).await;
-    assert_eq!(s, StatusCode::UNAUTHORIZED);
+}
 
-    let people = plan(&app, Method::DELETE, &format!("/people/{person}"), None).await;
-    assert!(people.as_array().unwrap().is_empty());
+async fn unlock_as(app: &Router, from: &str, code: &str) -> (StatusCode, Value) {
+    let (s, _, v) = archive_call(
+        app,
+        from,
+        Method::POST,
+        "/api/archive/unlock",
+        Some(json!({ "code": code })),
+        None,
+    )
+    .await;
+    (s, v)
 }
 
 #[tokio::test]
-async fn passkey_ceremonies_start_for_a_live_link() {
+async fn archive_guesses_wait_then_lock_until_the_planner_reopens() {
     let app = app(Some(KEY)).await;
-    let (s, _, v) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        "/api/auth/signin/start",
-        None,
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::CONFLICT, "nothing registered yet: {v}");
+    let (s, _) = call(&app, Method::GET, "/api/plan/archive", None, None).await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "the guard is planner-only");
 
-    let made = plan(
-        &app,
-        Method::POST,
-        "/invites",
-        Some(json!({ "name": "나" })),
-    )
-    .await;
-    let token = made["token"].as_str().unwrap();
-    let (s, _, v) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        &format!("/api/auth/invite/{token}/register"),
-        None,
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::OK, "{v}");
-    let pk = &v["options"]["publicKey"];
-    assert_eq!(pk["rp"]["id"], "localhost");
-    assert_eq!(pk["user"]["name"], "나");
-    assert!(pk["challenge"].as_str().is_some_and(|c| !c.is_empty()));
-    assert!(v["flow"].as_str().is_some());
+    // the first miss costs a minute, and then even the right code has to wait
+    let (s, v) = unlock_as(&app, HOME, "999999").await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("1분"), "{v}");
+    assert_eq!(v["retry_after"], 60);
+    let (s, v) = unlock_as(&app, HOME, BIRTHDAY).await;
+    assert_eq!(s, StatusCode::TOO_MANY_REQUESTS, "{v}");
+    assert!(
+        v["retry_after"].as_i64().is_some_and(|t| t > 0 && t <= 60),
+        "{v}"
+    );
 
-    // finishing needs a real ceremony; unknown flows are refused
-    let (s, _, _) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        "/api/auth/register",
-        Some(json!({ "flow": "nope", "credential": {
-        "id": "AA", "rawId": "AA", "type": "public-key",
-        "response": { "attestationObject": "AA", "clientDataJSON": "AA" }
-    } })),
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::CONFLICT);
+    // another address is not held up, and a success there resets nothing here
+    let (s, _) = unlock_as(&app, "192.0.2.10", BIRTHDAY).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (s, _) = unlock_as(&app, HOME, BIRTHDAY).await;
+    assert_eq!(s, StatusCode::TOO_MANY_REQUESTS);
 
-    let (s, _, _) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        "/api/auth/invite/not-a-token/register",
-        None,
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::NOT_FOUND);
+    let g = plan(&app, Method::GET, "/archive", None).await;
+    assert_eq!(g["enabled"], true);
+    assert_eq!(g["misses_today"], 1);
+    assert_eq!(g["daily_limit"], 20);
+    assert!(g["locked_at"].is_null());
+    assert_eq!(g["recent"][0]["ok"], true);
+    assert_eq!(g["recent"][0]["address"], "192.0.2.*");
+    assert_eq!(g["recent"][1]["ok"], false);
+
+    // misses from everywhere add up to the daily limit, which locks the archive for everyone
+    let mut locked = false;
+    for n in 0..30 {
+        let (s, v) = unlock_as(&app, &format!("198.51.100.{n}"), "999999").await;
+        if s == StatusCode::TOO_MANY_REQUESTS {
+            assert!(v["error"].as_str().unwrap().contains("잠가"), "{v}");
+            locked = true;
+            break;
+        }
+        assert_eq!(s, StatusCode::FORBIDDEN, "{v}");
+    }
+    assert!(locked);
+    let g = plan(&app, Method::GET, "/archive", None).await;
+    assert!(g["locked_at"].is_i64(), "{g}");
+    assert_eq!(g["misses_today"], 20);
+    let (s, _) = unlock_as(&app, "192.0.2.99", BIRTHDAY).await;
+    assert_eq!(
+        s,
+        StatusCode::TOO_MANY_REQUESTS,
+        "locked even for the right code"
+    );
+
+    // the planner reopens it and forgives the misses so far
+    let g = plan(&app, Method::POST, "/archive/reopen", None).await;
+    assert!(g["locked_at"].is_null());
+    assert_eq!(g["misses_today"], 0);
+    let (s, _) = unlock_as(&app, HOME, BIRTHDAY).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
 }
 
 #[tokio::test]
@@ -775,157 +703,4 @@ async fn weather_far_ahead_needs_no_request() {
 
     let (s, _) = call(&app, Method::GET, "/api/pick/nope/weather", None, None).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
-}
-
-/// A whole passkey life with a software authenticator: register through a link, sign out, sign
-/// back in, then lose the device.
-#[tokio::test]
-async fn passkeys_register_sign_in_and_can_be_removed() {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
-    use webauthn_rs::prelude::{CreationChallengeResponse, RequestChallengeResponse, Url};
-
-    let app = app(Some(KEY)).await;
-    let origin = Url::parse("http://localhost:8080").unwrap();
-    // "falsify UV": the soft token claims the Face ID step that real devices perform
-    let mut device = SoftPasskey::new(true);
-
-    let made = plan(
-        &app,
-        Method::POST,
-        "/invites",
-        Some(json!({ "name": "지원" })),
-    )
-    .await;
-    let token = made["token"].as_str().unwrap();
-    let (s, _, v) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        &format!("/api/auth/invite/{token}/register"),
-        None,
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::OK);
-    let options: CreationChallengeResponse = serde_json::from_value(v["options"].clone()).unwrap();
-    let credential = device.do_registration(origin.clone(), options).unwrap();
-    let (s, set, v) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        "/api/auth/register",
-        Some(json!({ "flow": v["flow"], "credential": credential })),
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::NO_CONTENT, "{v}");
-    let cookie = session_of(&set.unwrap());
-    let (s, _, v) =
-        archive_call(&app, HOME, Method::GET, "/api/auth/me", None, Some(&cookie)).await;
-    assert_eq!((s, v["name"].as_str()), (StatusCode::OK, Some("지원")));
-
-    // the link is spent by the registration
-    let (s, _, _) = archive_call(
-        &app,
-        HOME,
-        Method::GET,
-        &format!("/api/auth/invite/{token}"),
-        None,
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::NOT_FOUND);
-
-    archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        "/api/auth/logout",
-        None,
-        Some(&cookie),
-    )
-    .await;
-    let sign_in = |device: &mut SoftPasskey, v: &Value| {
-        let options: RequestChallengeResponse =
-            serde_json::from_value(v["options"].clone()).unwrap();
-        device.do_authentication(origin.clone(), options).unwrap()
-    };
-    let (s, _, v) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        "/api/auth/signin/start",
-        None,
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::OK, "{v}");
-    let assertion = sign_in(&mut device, &v);
-    let (s, set, v) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        "/api/auth/signin",
-        Some(json!({ "flow": v["flow"], "credential": assertion })),
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::NO_CONTENT, "{v}");
-    let cookie = session_of(&set.unwrap());
-    let (s, _, _) =
-        archive_call(&app, HOME, Method::GET, "/api/archive", None, Some(&cookie)).await;
-    assert_eq!(s, StatusCode::OK);
-
-    // a ceremony answers once
-    let (_, _, v) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        "/api/auth/signin/start",
-        None,
-        None,
-    )
-    .await;
-    let assertion = sign_in(&mut device, &v);
-    let body = json!({ "flow": v["flow"], "credential": assertion });
-    let (s, _, _) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        "/api/auth/signin",
-        Some(body.clone()),
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::NO_CONTENT);
-    let (s, _, _) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        "/api/auth/signin",
-        Some(body),
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::CONFLICT, "replayed");
-
-    // the planner sees the device and can forget it: its sessions end, it can't sign in
-    let people = plan(&app, Method::GET, "/people", None).await;
-    let devices = people[0]["devices"].as_array().unwrap();
-    assert_eq!(devices.len(), 1);
-    let id = devices[0]["id"].as_str().unwrap();
-    plan(&app, Method::DELETE, &format!("/passkeys/{id}"), None).await;
-    let (s, _, _) =
-        archive_call(&app, HOME, Method::GET, "/api/archive", None, Some(&cookie)).await;
-    assert_eq!(s, StatusCode::UNAUTHORIZED);
-    let (s, _, _) = archive_call(
-        &app,
-        HOME,
-        Method::POST,
-        "/api/auth/signin/start",
-        None,
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::CONFLICT, "no devices left");
 }
