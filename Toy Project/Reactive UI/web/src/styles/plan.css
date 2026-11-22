@@ -386,3 +386,65 @@ a.btn {
   place-items: center;
   text-decoration: none;
 }
+
+/* wishlist picker under a step's candidates */
+.wish-pick {
+  display: grid;
+  gap: 8px;
+}
+.wish-pick-toggle {
+  justify-self: start;
+  border: 0;
+  background: none;
+  padding: 4px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+.wish-pick ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.wish-pick li {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.wish-pick li.visited {
+  opacity: 0.7;
+}
+.wish-pick .tile {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+}
+.wp-body {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.wp-body b {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wp-body small {
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wp-body .wp-used {
+  color: var(--accent);
+}

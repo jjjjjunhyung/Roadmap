@@ -16,8 +16,9 @@ import {
   type StepInput,
   errorMessage,
   planApi,
+  type PlannerWish,
 } from "../lib/api";
-import { KIND_LABEL, formatDate, two } from "../lib/look";
+import { KIND_LABEL, formatDate, placeLine, two } from "../lib/look";
 
 export const Route = createFileRoute("/plan/$key/$courseId")({ component: Editor });
 
@@ -60,6 +61,15 @@ function Editor() {
     queryFn: () => api.course(courseId),
     retry: false,
   });
+  const wishes = useQuery({
+    queryKey: ["plan", key, "wishes"],
+    queryFn: api.wishes,
+    retry: false,
+  });
+  const wishUsed = useCallback(
+    () => void qc.invalidateQueries({ queryKey: ["plan", key, "wishes"] }),
+    [qc, key],
+  );
   // follows the date (and, through the cache's hour, the places)
   const wx = useQuery({
     queryKey: ["plan", key, "weather", courseId, q.data?.date],
@@ -229,6 +239,8 @@ function Editor() {
             api={api}
             run={run}
             onMove={move}
+            wishes={wishes.data}
+            onWishUsed={wishUsed}
           />
         ))}
       </section>
@@ -266,8 +278,10 @@ function StepEditor(props: {
   api: Api;
   run: Run;
   onMove: (i: number, dir: -1 | 1) => void;
+  wishes: PlannerWish[] | undefined;
+  onWishUsed: () => void;
 }) {
-  const { step, n, last, api, run, onMove } = props;
+  const { step, n, last, api, run, onMove, wishes, onWishUsed } = props;
   const save = (body: StepInput) => run(api.updateStep(step.id, body));
   const picked = step.candidates.find((c) => c.id === step.picked_id);
   const game = GAMES[step.game];
@@ -394,7 +408,12 @@ function StepEditor(props: {
           />
         ))}
       </ul>
-      {step.candidates.length < 8 && <AddCandidate stepId={step.id} api={api} run={run} />}
+      {step.candidates.length < 8 && (
+        <>
+          <AddCandidate stepId={step.id} api={api} run={run} />
+          <WishPicker step={step} api={api} run={run} wishes={wishes} onUsed={onWishUsed} />
+        </>
+      )}
     </article>
   );
 }
@@ -584,5 +603,66 @@ function AddCandidate({ stepId, api, run }: { stepId: string; api: Api; run: Run
         {busy ? (mapUrl.includes("naver") ? "사진 찾는 중…" : "추가하는 중…") : "후보 추가"}
       </button>
     </form>
+  );
+}
+
+/** Wishes from the archive, one tap away from being a candidate here. */
+function WishPicker(props: {
+  step: Step;
+  api: Api;
+  run: Run;
+  wishes: PlannerWish[] | undefined;
+  onUsed: () => void;
+}) {
+  const { step, api, run, wishes, onUsed } = props;
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  if (!wishes || wishes.length === 0) return null;
+  const waiting = wishes.filter((w) => !w.visited).length;
+  // already here: same link, or the same name when there is no link
+  const inStep = (w: PlannerWish) =>
+    step.candidates.some((c) => (w.map_url ? c.map_url === w.map_url : c.name === w.name));
+
+  return (
+    <div className="wish-pick">
+      <button className="wish-pick-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? "위시리스트 닫기" : `위시리스트에서 가져오기 · ${waiting}곳`}
+      </button>
+      {open && (
+        <ul>
+          {wishes.map((w, i) => {
+            const here = inStep(w);
+            const where = w.visited
+              ? `다녀옴 · ${formatDate(w.visited.date).md}`
+              : w.used.length > 0
+                ? `후보로 씀 · ${w.used.map((u) => `${formatDate(u.date).md} ${u.title}`).join(", ")}`
+                : "";
+            return (
+              <li key={w.id} className={w.visited ? "visited" : ""}>
+                <Tile index={i} showIndex={false} image={w.image_url} />
+                <span className="wp-body">
+                  <b>{w.name}</b>
+                  {(placeLine(w) || w.memo) && (
+                    <small>{[placeLine(w), w.memo].filter(Boolean).join(" · ")}</small>
+                  )}
+                  {where && <small className="wp-used">{where}</small>}
+                </span>
+                <button
+                  className="btn small ink"
+                  disabled={here || busy !== null}
+                  onClick={async () => {
+                    setBusy(w.id);
+                    if (await run(api.fromWish(step.id, w.id))) onUsed();
+                    setBusy(null);
+                  }}
+                >
+                  {here ? "넣음" : busy === w.id ? "넣는 중…" : "넣기"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

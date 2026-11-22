@@ -41,3 +41,7 @@ export function formatDate(iso: string) {
     full: date.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "long" }),
   };
 }
+
+/** "중식당 · 논현동" for a place with a kind and a neighbourhood (either may be ""). */
+export const placeLine = (p: { category: string; area: string }) =>
+  [p.category, p.area].filter(Boolean).join(" · ");

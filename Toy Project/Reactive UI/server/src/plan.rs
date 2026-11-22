@@ -36,6 +36,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/candidates/{id}/photos", get(candidate_photos))
         .merge(crate::archive::planner_router())
         .merge(crate::backup::planner_router())
+        .merge(crate::wishes::planner_router())
         .route_layer(middleware::from_fn_with_state(state, require_key))
 }
 

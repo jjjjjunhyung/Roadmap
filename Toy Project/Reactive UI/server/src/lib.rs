@@ -10,6 +10,7 @@ mod pick;
 mod plan;
 pub mod validate;
 mod weather;
+mod wishes;
 
 use std::{path::Path, str::FromStr, sync::Arc, time::Duration};
 
@@ -83,6 +84,7 @@ pub fn router(state: AppState, static_dir: Option<&Path>) -> Router {
         .nest("/pick", pick::router())
         .merge(archive::router())
         .merge(album::router())
+        .merge(wishes::router())
         .fallback(|| async { StatusCode::NOT_FOUND });
 
     let mut app = Router::new().nest("/api", api);

@@ -980,3 +980,185 @@ async fn backup_uploads_a_consistent_copy() {
     .unwrap();
     assert!(run_once(&db, &bad).await.is_err());
 }
+
+#[tokio::test]
+async fn wishes_become_candidates_and_show_once_visited() {
+    let app = app(Some(KEY)).await;
+    let (_, set, _) = archive_call(
+        &app,
+        "192.0.2.60",
+        Method::POST,
+        "/api/archive/unlock",
+        Some(json!({ "code": BIRTHDAY })),
+        None,
+    )
+    .await;
+    let cookie = set.unwrap().split(';').next().unwrap().to_string();
+    let ck = Some(cookie.as_str());
+    let wish = |body: Value| {
+        let app = app.clone();
+        let cookie = cookie.clone();
+        async move {
+            archive_call(
+                &app,
+                HOME,
+                Method::POST,
+                "/api/archive/wishes",
+                Some(body),
+                Some(&cookie),
+            )
+            .await
+        }
+    };
+
+    let (s, _, _) = archive_call(
+        &app,
+        HOME,
+        Method::POST,
+        "/api/archive/wishes",
+        Some(json!({ "link": "https://map.kakao.com/a", "name": "x" })),
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+
+    // a link from elsewhere carries no name: it has to be typed
+    let (s, _, v) = wish(json!({ "link": "https://map.kakao.com/a" })).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    let (s, _, picnic) = wish(json!({ "link": "https://map.kakao.com/a", "name": "한강 피크닉", "memo": "돗자리 챙기기" })).await;
+    assert_eq!(s, StatusCode::CREATED, "{picnic}");
+    assert_eq!(picnic["name"], "한강 피크닉");
+    assert!(picnic["visited"].is_null());
+    let (s, _, _) = wish(json!({ "link": "https://map.kakao.com/a", "name": "또" })).await;
+    assert_eq!(s, StatusCode::CONFLICT, "the same place twice");
+    // the whole share text works: the link is found in it
+    let (s, _, bar) =
+        wish(json!({ "link": "[지도]\n술집\nhttps://map.kakao.com/b 여기!", "name": "작은 술집" }))
+            .await;
+    assert_eq!(s, StatusCode::CREATED);
+    assert_eq!(bar["map_url"], "https://map.kakao.com/b");
+    let (s, _, _) = wish(json!({ "link": "", "name": "" })).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+
+    // the planner turns a wish into a candidate, once per step
+    let c = seeded(&app).await;
+    let (id, s0, s1) = (
+        c["id"].as_str().unwrap().to_string(),
+        c["steps"][0]["id"].as_str().unwrap().to_string(),
+        c["steps"][1]["id"].as_str().unwrap().to_string(),
+    );
+    let wid = picnic["id"].as_str().unwrap();
+    let (s, _) = call(
+        &app,
+        Method::POST,
+        &format!("/api/plan/steps/{s0}/wishes"),
+        Some(json!({ "wish_id": wid })),
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "planner-only");
+    let full = plan(
+        &app,
+        Method::POST,
+        &format!("/steps/{s0}/wishes"),
+        Some(json!({ "wish_id": wid })),
+    )
+    .await;
+    let cands = full["steps"][0]["candidates"].as_array().unwrap();
+    let from_wish = cands.last().unwrap();
+    assert_eq!(
+        (from_wish["name"].as_str(), from_wish["memo"].as_str()),
+        (Some("한강 피크닉"), Some("돗자리 챙기기"))
+    );
+    assert_eq!(from_wish["map_url"], "https://map.kakao.com/a");
+    let (s, v) = call(
+        &app,
+        Method::POST,
+        &format!("/api/plan/steps/{s0}/wishes"),
+        Some(json!({ "wish_id": wid })),
+        Some(KEY),
+    )
+    .await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+
+    let ws = plan(&app, Method::GET, "/wishes", None).await;
+    let w = ws
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["id"] == wid)
+        .unwrap()
+        .clone();
+    assert_eq!(w["used"][0]["course_id"], id.as_str());
+    assert_eq!(w["used"][0]["status"], "draft");
+
+    // the archive keeps the surprise: nothing shows until a finished course picked it
+    let (_, _, list) = archive_call(&app, HOME, Method::GET, "/api/archive/wishes", None, ck).await;
+    assert!(
+        list.as_array()
+            .unwrap()
+            .iter()
+            .all(|w| w["visited"].is_null() && w.get("used").is_none()),
+        "{list}"
+    );
+
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/courses/{id}"),
+        Some(json!({ "status": "open" })),
+    )
+    .await;
+    let code = c["share_code"].as_str().unwrap();
+    let picked = c["steps"][0]["candidates"]
+        .as_array()
+        .unwrap()
+        .last()
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let other = c["steps"][1]["candidates"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    for (step, cand) in [(&s0, &picked), (&s1, &other)] {
+        let (s, _) = call(
+            &app,
+            Method::POST,
+            &format!("/api/pick/{code}/steps/{step}/pick"),
+            Some(json!({ "candidate_id": cand })),
+            None,
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+    }
+    let (_, _, list) = archive_call(&app, HOME, Method::GET, "/api/archive/wishes", None, ck).await;
+    let list = list.as_array().unwrap();
+    assert_eq!(list.last().unwrap()["id"], wid, "visited ones go last");
+    assert_eq!(list.last().unwrap()["visited"]["title"], "크리스마스");
+    assert!(list[0]["visited"].is_null());
+
+    // removing a wish keeps the candidate but stops new ones
+    let (s, _, _) = archive_call(
+        &app,
+        HOME,
+        Method::DELETE,
+        &format!("/api/archive/wishes/{wid}"),
+        None,
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (_, _, list) = archive_call(&app, HOME, Method::GET, "/api/archive/wishes", None, ck).await;
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    let (s, _) = call(
+        &app,
+        Method::POST,
+        &format!("/api/plan/steps/{s1}/wishes"),
+        Some(json!({ "wish_id": wid })),
+        Some(KEY),
+    )
+    .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}

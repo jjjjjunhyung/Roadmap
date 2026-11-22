@@ -52,6 +52,12 @@ pub struct Place {
     pub photos: Vec<Photo>,
     /// (latitude, longitude)
     pub at: Option<(f64, f64)>,
+    /// The place's own name, e.g. "홍명".
+    pub name: Option<String>,
+    /// What it is, e.g. "중식당".
+    pub category: Option<String>,
+    /// Its neighbourhood, e.g. "논현동".
+    pub area: Option<String>,
 }
 
 impl Place {
@@ -147,8 +153,24 @@ fn place_id(link: &str) -> Option<String> {
 fn parse(html: &str) -> Place {
     let mut found = Found::default();
     let mut at = None;
+    let (mut name, mut category, mut area) = (None, None, None);
     if let Some(Value::Object(state)) = embedded_state(html) {
         at = entries(&state, "PlaceDetailBase:").find_map(|v| coordinate(&v["coordinate"]));
+        if let Some(base) = entries(&state, "PlaceDetailBase:").find(|v| v["name"].is_string()) {
+            let text = |k: &str| {
+                base[k]
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned)
+            };
+            name = text("name");
+            category = text("category");
+            area = text("address")
+                .as_deref()
+                .and_then(neighbourhood)
+                .or_else(|| text("roadAddress").as_deref().and_then(neighbourhood));
+        }
         for menu in entries(&state, "PlaceMenuItem:") {
             if let Some(src) = menu["images"][0]["url"].as_str() {
                 let name = menu["name"].as_str().unwrap_or_default().trim();
@@ -189,7 +211,28 @@ fn parse(html: &str) -> Place {
     Place {
         photos: found.0,
         at,
+        name,
+        category,
+        area,
     }
+}
+
+/// "서울 강남구 논현동 37-9" → "논현동" ("…1가" too); a road address gives its district ("강남구").
+fn neighbourhood(address: &str) -> Option<String> {
+    let words: Vec<&str> = address.split_whitespace().collect();
+    words
+        .iter()
+        .find(|w| {
+            ['동', '읍', '면', '리'].iter().any(|e| w.ends_with(*e))
+                // "종로1가", "태평로1가"
+                || (w.ends_with('가') && w.chars().any(|c| c.is_ascii_digit()))
+        })
+        .or_else(|| {
+            words
+                .iter()
+                .find(|w| w.ends_with('구') || w.ends_with('군') || w.ends_with('시'))
+        })
+        .map(|w| (*w).to_owned())
 }
 
 /// `{"x": "127.03", "y": "37.51"}` (strings or numbers) → (lat, lng), if plausible.
@@ -297,9 +340,30 @@ mod tests {
     }
 
     #[test]
+    fn names_the_neighbourhood() {
+        assert_eq!(
+            neighbourhood("서울 강남구 논현동 37-9").as_deref(),
+            Some("논현동")
+        );
+        assert_eq!(
+            neighbourhood("서울 강남구 논현로131길 10").as_deref(),
+            Some("강남구")
+        );
+        assert_eq!(
+            neighbourhood("경기 가평군 청평면 대성리 1").as_deref(),
+            Some("청평면")
+        );
+        assert_eq!(
+            neighbourhood("제주특별자치도 제주시 1"),
+            Some("제주시".to_owned())
+        );
+        assert_eq!(neighbourhood(""), None);
+    }
+
+    #[test]
     fn lists_menu_then_visitor_food_then_own_photos() {
         let html = r#"<html><script>window.__APOLLO_STATE__ = {
-            "PlaceDetailBase:1": {"name": "가게", "coordinate": {"x": "126.9779692", "y": "37.5662952"}},
+            "PlaceDetailBase:1": {"name": "가게", "category": "중식당", "address": "서울 중구 태평로1가 31", "coordinate": {"x": "126.9779692", "y": "37.5662952"}},
             "PlaceMenuItem:a": {"name": "간짜장", "images": [{"url": "https://ldb-phinf.pstatic.net/a.jpg"}]},
             "PlaceMenuItem:b": {"name": "짬뽕", "images": []},
             "PlaceDetailTopPhotoItem:1_business_1": {"id": "1_business_1", "mediaFormat": "image", "subFilterId": null, "originalUrl": "https://pup-review-phinf.pstatic.net/b.jpg"},
@@ -311,6 +375,9 @@ mod tests {
         };</script></html>"#;
         let got = parse(html);
         assert_eq!(got.at, Some((37.5662952, 126.9779692)));
+        assert_eq!(got.name.as_deref(), Some("가게"));
+        assert_eq!(got.category.as_deref(), Some("중식당"));
+        assert_eq!(got.area.as_deref(), Some("태평로1가"));
         let got = got.photos;
         let labels: Vec<&str> = got.iter().map(|p| p.label.as_str()).collect();
         assert_eq!(

@@ -164,6 +164,29 @@ export interface ArchiveGuard {
   recent: GuardAttempt[];
 }
 
+/** A place someone wants to go, kept in the archive. */
+export interface Wish {
+  id: string;
+  name: string;
+  memo: string;
+  map_url: string;
+  /** "" when there is no photo */
+  image_url: string;
+  /** e.g. "중식당"; "" when unknown */
+  category: string;
+  /** e.g. "논현동"; "" when unknown */
+  area: string;
+  /** unix seconds */
+  created_at: number;
+  /** set once a finished course picked it */
+  visited: { title: string; date: string; share_code: string } | null;
+}
+
+/** A wish as the planner sees it: also the courses it went into. */
+export interface PlannerWish extends Wish {
+  used: { course_id: string; title: string; date: string; status: CourseStatus }[];
+}
+
 /** The daily database backup, as the planner sees it. Times are unix seconds. */
 export interface BackupStatus {
   configured: boolean;
@@ -269,6 +292,14 @@ export const archiveApi = {
   lock: () => request<void>("POST", "/archive/lock"),
 };
 
+/** The wishlist, behind the birthday like the archive. `link` may be a whole share text. */
+export const wishApi = {
+  list: () => request<Wish[]>("GET", "/archive/wishes"),
+  add: (link: string, name: string, memo: string) =>
+    request<Wish>("POST", "/archive/wishes", { body: { link, name, memo } }),
+  remove: (id: string) => request<void>("DELETE", `/archive/wishes/${encodeURIComponent(id)}`),
+};
+
 /** Photos of a course's day, behind the birthday like the archive. */
 export const albumApi = {
   list: (code: string) =>
@@ -325,6 +356,9 @@ export function planApi(key: string) {
     photos: (id: string) => r<PhotoOption[]>("GET", `/candidates/${id}/photos`),
     guard: () => r<ArchiveGuard>("GET", "/archive"),
     backup: () => r<BackupStatus>("GET", "/backup"),
+    wishes: () => r<PlannerWish[]>("GET", "/wishes"),
+    fromWish: (stepId: string, wishId: string) =>
+      r<CourseFull>("POST", `/steps/${stepId}/wishes`, { wish_id: wishId }),
     backupNow: () => r<BackupStatus>("POST", "/backup"),
     reopenArchive: () => r<ArchiveGuard>("POST", "/archive/reopen"),
   };

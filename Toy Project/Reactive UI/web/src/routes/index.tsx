@@ -3,9 +3,18 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
-import { ApiError, type Memory, archiveApi, errorMessage, photoUrl, pickApi } from "../lib/api";
+import {
+  ApiError,
+  type Memory,
+  archiveApi,
+  errorMessage,
+  photoUrl,
+  pickApi,
+  wishApi,
+} from "../lib/api";
 import { useTurnstile } from "../components/Turnstile";
 import { WeatherIcon } from "../components/Weather";
+import { Wishlist } from "../components/Wishlist";
 import { useConfig } from "../lib/config";
 import { haptic, sfx, viewTransition } from "../lib/feel";
 import { formatDate } from "../lib/look";
@@ -304,7 +313,28 @@ function dday(iso: string) {
   return n === 0 ? "오늘" : n > 0 ? `D-${n}` : null;
 }
 
+const VIEW_KEY = "archive-view";
+type View = "dates" | "wishes";
+
+function readView(): View {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "wishes" ? "wishes" : "dates";
+  } catch {
+    return "dates";
+  }
+}
+
 function Memories({ list, onLock }: { list: Memory[]; onLock: () => void }) {
+  const [view, setView] = useState<View>(readView);
+  const wishes = useQuery({ queryKey: ["wishes"], queryFn: wishApi.list, retry: false });
+  const show = (v: View) => {
+    setView(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* the tab just won't be remembered */
+    }
+  };
   const done = list.filter((m) => m.status === "done");
   const sections = [
     // still being chosen, then finished ones still ahead (soonest first), then the past
@@ -324,25 +354,38 @@ function Memories({ list, onLock }: { list: Memory[]; onLock: () => void }) {
         <span className="label">Archive</span>
         <h1>우리의 데이트</h1>
         <p className="lede">
-          {list.length > 0
-            ? `함께 고른 코스 ${list.length}개. 누르면 그날의 티켓을 다시 볼 수 있어.`
-            : "아직 함께 고른 데이트가 없어. 링크를 받으면 여기에 모여."}
+          {view === "wishes"
+            ? "가 보고 싶은 곳을 모아 두는 곳이야."
+            : list.length > 0
+              ? `함께 고른 코스 ${list.length}개. 누르면 그날의 티켓을 다시 볼 수 있어.`
+              : "아직 함께 고른 데이트가 없어. 링크를 받으면 여기에 모여."}
         </p>
       </header>
 
-      {sections.map(
-        (s) =>
-          s.items.length > 0 && (
-            <section key={s.name} className="memories" aria-label={s.name}>
-              <span className="label">{s.name}</span>
-              <ul>
-                {s.items.map((m) => (
-                  <MemoryCard key={m.share_code} m={m} />
-                ))}
-              </ul>
-            </section>
-          ),
-      )}
+      <div className="seg" role="tablist" aria-label="보기">
+        <button role="tab" aria-selected={view === "dates"} onClick={() => show("dates")}>
+          데이트 <i>{list.length}</i>
+        </button>
+        <button role="tab" aria-selected={view === "wishes"} onClick={() => show("wishes")}>
+          가고 싶은 곳 <i>{wishes.data?.length ?? ""}</i>
+        </button>
+      </div>
+
+      {view === "wishes" && <Wishlist />}
+      {view === "dates" &&
+        sections.map(
+          (s) =>
+            s.items.length > 0 && (
+              <section key={s.name} className="memories" aria-label={s.name}>
+                <span className="label">{s.name}</span>
+                <ul>
+                  {s.items.map((m) => (
+                    <MemoryCard key={m.share_code} m={m} />
+                  ))}
+                </ul>
+              </section>
+            ),
+        )}
     </main>
   );
 }
