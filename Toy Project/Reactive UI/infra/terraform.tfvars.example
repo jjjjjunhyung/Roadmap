@@ -2,3 +2,4 @@ tenancy_ocid          = "ocid1.tenancy.oc1..xxxxxxxx"
 cloudflare_account_id = "0123456789abcdef0123456789abcdef"
 domain                = "example.com"
 ssh_public_key        = "ssh-ed25519 AAAA... user@host"
+region                = "ap-seoul-1" # as in ~/.oci/config

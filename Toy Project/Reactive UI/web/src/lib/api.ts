@@ -164,6 +164,15 @@ export interface ArchiveGuard {
   recent: GuardAttempt[];
 }
 
+/** The daily database backup, as the planner sees it. Times are unix seconds. */
+export interface BackupStatus {
+  configured: boolean;
+  last_ok: number | null;
+  last_bytes: number | null;
+  last_error: string | null;
+  last_error_at: number | null;
+}
+
 export type StepInput = Partial<
   Pick<Step, "kind" | "label" | "title" | "time" | "game" | "rerolls">
 >;
@@ -315,6 +324,8 @@ export function planApi(key: string) {
     removeCandidate: (id: string) => r<CourseFull>("DELETE", `/candidates/${id}`),
     photos: (id: string) => r<PhotoOption[]>("GET", `/candidates/${id}/photos`),
     guard: () => r<ArchiveGuard>("GET", "/archive"),
+    backup: () => r<BackupStatus>("GET", "/backup"),
+    backupNow: () => r<BackupStatus>("POST", "/backup"),
     reopenArchive: () => r<ArchiveGuard>("POST", "/archive/reopen"),
   };
 }

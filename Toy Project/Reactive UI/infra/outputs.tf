@@ -45,3 +45,13 @@ output "turnstile_secret" {
   value       = cloudflare_turnstile_widget.archive.secret
   sensitive   = true
 }
+
+output "backup_bucket" {
+  value = oci_objectstorage_bucket.backups.name
+}
+
+output "backup_url" {
+  description = "Goes into BACKUP_URL in the VM's .env: write-only upload prefix (never commit it)"
+  value       = "https://objectstorage.${var.region}.oraclecloud.com${oci_objectstorage_preauthrequest.backup_upload.access_uri}"
+  sensitive   = true
+}

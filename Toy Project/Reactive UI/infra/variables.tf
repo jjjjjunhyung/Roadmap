@@ -23,3 +23,8 @@ variable "ssh_public_key" {
   description = "SSH public key for the ubuntu user (only applied at instance launch)"
   type        = string
 }
+
+variable "region" {
+  description = "OCI region of the resources (as in ~/.oci/config), e.g. for service names in policies"
+  type        = string
+}

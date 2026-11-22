@@ -2,6 +2,7 @@
 
 mod album;
 pub mod archive;
+pub mod backup;
 pub mod error;
 mod model;
 mod naver;
@@ -37,6 +38,8 @@ pub struct AppState {
     pub naver_map_client_id: Option<Arc<str>>,
     /// The birthday lock on the list of every shared course; the list stays closed when unset.
     pub archive: Option<Arc<archive::Archive>>,
+    /// Daily database backup to Object Storage; off when BACKUP_URL is unset.
+    pub backup: Option<Arc<backup::Backup>>,
 }
 
 pub async fn open_database(url: &str) -> anyhow::Result<SqlitePool> {

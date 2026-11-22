@@ -19,6 +19,8 @@ services:
       # set both or neither
       TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
       TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
+      # Write-only Object Storage URL for the daily database backup (infra output backup_url)
+      BACKUP_URL: ${BACKUP_URL:-}
     volumes:
       - /data/reactive-ui:/data # SQLite database lives on the block volume
     stop_grace_period: 10s

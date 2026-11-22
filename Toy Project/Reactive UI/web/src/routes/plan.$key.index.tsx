@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
+import { BackupCard } from "../components/Backup";
 import { GuardCard } from "../components/Guard";
 import { Toast } from "../components/ui";
 import { errorMessage, planApi } from "../lib/api";
@@ -117,6 +118,7 @@ function CourseList() {
         )}
       </section>
       <GuardCard api={api} plannerKey={key} />
+      <BackupCard api={api} plannerKey={key} />
       <Toast message={toast} onDone={clearToast} />
     </main>
   );

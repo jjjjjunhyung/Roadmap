@@ -23,6 +23,7 @@ async fn app(key: Option<&str>) -> Router {
             planner_key: key.map(Into::into),
             naver_map_client_id: Some("test-map-id".into()),
             archive: key.and_then(|k| Archive::new(BIRTHDAY, k)).map(Into::into),
+            backup: None,
         },
         None,
     )
@@ -900,4 +901,82 @@ async fn album_keeps_clean_photos_for_the_signed_in() {
             .len(),
         1
     );
+}
+
+/// A backup is a complete, readable copy of the database, sent with a single PUT.
+#[tokio::test]
+async fn backup_uploads_a_consistent_copy() {
+    use axum::{extract::Path as P, routing::put};
+    use reactive_ui_server::backup::{Backup, run_once};
+    use std::sync::{Arc, Mutex};
+
+    // a stand-in for Object Storage that keeps what it receives
+    type Received = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+    let got: Received = Arc::default();
+    let keep = got.clone();
+    let store = Router::new().route(
+        "/o/{name}",
+        put(move |P(name): P<String>, body: axum::body::Bytes| {
+            let keep = keep.clone();
+            async move {
+                keep.lock().unwrap().push((name, body.to_vec()));
+                StatusCode::OK
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move { axum::serve(listener, store).await.unwrap() });
+
+    // a file database, as in production (an in-memory one would copy into memory too)
+    let root = std::env::temp_dir().join(format!("reactive-ui-backup-test-{port}"));
+    let dir = root.join("copies");
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = open_database(&format!("sqlite://{}/app.db", root.display()))
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO courses (title, date) VALUES ('백업', '2026-12-24')")
+        .execute(&db)
+        .await
+        .unwrap();
+    let b = Backup::new(&format!("http://127.0.0.1:{port}/o/"), dir.clone()).unwrap();
+    let bytes = run_once(&db, &b).await.unwrap();
+
+    let (name, body) = got.lock().unwrap().pop().unwrap();
+    assert!(name.starts_with("app-") && name.ends_with(".db"), "{name}");
+    assert_eq!(body.len() as u64, bytes);
+    assert!(body.starts_with(b"SQLite format 3\0"));
+    assert_eq!(
+        std::fs::read_dir(&dir).unwrap().count(),
+        0,
+        "the local copy is removed"
+    );
+
+    // the copy opens and holds the data
+    let copy = root.join("restored.db");
+    std::fs::write(&copy, &body).unwrap();
+    let restored = sqlx::SqlitePool::connect(&format!("sqlite://{}", copy.display()))
+        .await
+        .unwrap();
+    let title: String = sqlx::query_scalar("SELECT title FROM courses")
+        .fetch_one(&restored)
+        .await
+        .unwrap();
+    assert_eq!(title, "백업");
+    let ok: String = sqlx::query_scalar("PRAGMA integrity_check")
+        .fetch_one(&restored)
+        .await
+        .unwrap();
+    assert_eq!(ok, "ok");
+    restored.close().await;
+    db.close().await;
+    std::fs::remove_dir_all(&root).unwrap();
+
+    // a refused upload is reported
+    let bad = Backup::new(
+        &format!("http://127.0.0.1:{port}/nowhere/"),
+        std::env::temp_dir(),
+    )
+    .unwrap();
+    assert!(run_once(&db, &bad).await.is_err());
 }

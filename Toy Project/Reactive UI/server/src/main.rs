@@ -3,7 +3,12 @@
 use std::{env, net::SocketAddr, path::PathBuf};
 
 use anyhow::Context;
-use reactive_ui_server::{AppState, archive::Archive, open_database, router};
+use reactive_ui_server::{
+    AppState,
+    archive::Archive,
+    backup::{self, Backup},
+    open_database, router,
+};
 use tracing_subscriber::EnvFilter;
 
 /// Runtime settings, all from environment variables (defaults suit local development).
@@ -78,6 +83,23 @@ async fn main() -> anyhow::Result<()> {
         }
         _ => None,
     };
+    // the database's directory holds the temporary copy while it uploads
+    let data_dir = config
+        .database_url
+        .trim_start_matches("sqlite://")
+        .trim_start_matches("sqlite:")
+        .rsplit_once('/')
+        .map_or(PathBuf::from("."), |(dir, _)| {
+            PathBuf::from(if dir.is_empty() { "/" } else { dir })
+        });
+    let backup = env::var("BACKUP_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .and_then(|url| Backup::new(&url, data_dir))
+        .map(std::sync::Arc::new);
+    if backup.is_none() {
+        tracing::warn!("BACKUP_URL is not set: no daily backups");
+    }
     let state = AppState {
         db: open_database(&config.database_url).await?,
         revision: env::var("APP_REVISION")
@@ -90,7 +112,11 @@ async fn main() -> anyhow::Result<()> {
             .filter(|v| !v.is_empty())
             .map(Into::into),
         archive,
+        backup: backup.clone(),
     };
+    if let Some(b) = backup {
+        backup::spawn(state.db.clone(), b);
+    }
     let app = router(state, Some(&config.static_dir));
 
     let listener = tokio::net::TcpListener::bind(config.bind_addr)
