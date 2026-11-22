@@ -6,11 +6,12 @@ use axum::{
     http::{Method, Request, StatusCode},
 };
 use http_body_util::BodyExt;
-use reactive_ui_server::{AppState, open_database, router};
+use reactive_ui_server::{AppState, archive::Archive, open_database, router};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
 const KEY: &str = "test-key";
+const BIRTHDAY: &str = "123456";
 
 async fn app(key: Option<&str>) -> Router {
     let db = open_database("sqlite::memory:").await.unwrap();
@@ -20,6 +21,7 @@ async fn app(key: Option<&str>) -> Router {
             revision: "test".into(),
             planner_key: key.map(Into::into),
             naver_map_client_id: Some("test-map-id".into()),
+            archive: key.and_then(|k| Archive::new(BIRTHDAY, k)).map(Into::into),
         },
         None,
     )
@@ -437,4 +439,162 @@ async fn config_and_locations_reach_the_picker() {
     let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
     let first = &v["current"]["candidates"][0];
     assert!(first.get("lat").is_some() && first["lat"].is_null());
+}
+
+/// Archive request with an optional cookie; returns status, Set-Cookie and body.
+async fn archive_call(
+    app: &Router,
+    method: Method,
+    path: &str,
+    body: Option<Value>,
+    cookie: Option<&str>,
+) -> (StatusCode, Option<String>, Value) {
+    let mut req = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("cf-connecting-ip", "203.0.113.7");
+    if let Some(c) = cookie {
+        req = req.header("cookie", c);
+    }
+    let req = match body {
+        Some(b) => req
+            .header("content-type", "application/json")
+            .body(Body::from(b.to_string())),
+        None => req.body(Body::empty()),
+    }
+    .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let status = res.status();
+    let set = res
+        .headers()
+        .get("set-cookie")
+        .map(|v| v.to_str().unwrap().to_string());
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        set,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn archive_opens_with_the_birthday_and_lists_shared_courses() {
+    let closed = app(None).await;
+    let (_, v) = call(&closed, Method::GET, "/api/config", None, None).await;
+    assert!(v["archive_digits"].is_null());
+    let (s, _, _) = archive_call(&closed, Method::GET, "/api/archive", None, None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "no passcode configured -> closed");
+
+    let app = app(Some(KEY)).await;
+    let (_, v) = call(&app, Method::GET, "/api/config", None, None).await;
+    assert_eq!(v["archive_digits"], 6);
+
+    // one draft (hidden), one shared and finished
+    let c = seeded(&app).await;
+    let draft = seeded(&app).await;
+    let id = c["id"].as_str().unwrap();
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/courses/{id}"),
+        Some(json!({ "status": "open" })),
+    )
+    .await;
+    let code = c["share_code"].as_str().unwrap();
+    for i in 0..2 {
+        let (sid, cid) = (
+            c["steps"][i]["id"].as_str().unwrap(),
+            c["steps"][i]["candidates"][1]["id"].as_str().unwrap(),
+        );
+        let (s, _) = call(
+            &app,
+            Method::POST,
+            &format!("/api/pick/{code}/steps/{sid}/pick"),
+            Some(json!({ "candidate_id": cid })),
+            None,
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+    }
+
+    let (s, _, _) = archive_call(&app, Method::GET, "/api/archive", None, None).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    let (s, _, _) = archive_call(
+        &app,
+        Method::GET,
+        "/api/archive",
+        None,
+        Some("archive=forged"),
+    )
+    .await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+
+    let (s, set, _) = archive_call(
+        &app,
+        Method::POST,
+        "/api/archive/unlock",
+        Some(json!({ "code": "000000" })),
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    assert!(set.is_none());
+
+    // separators are ignored
+    let (s, set, _) = archive_call(
+        &app,
+        Method::POST,
+        "/api/archive/unlock",
+        Some(json!({ "code": "12 34 56" })),
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let set = set.unwrap();
+    assert!(
+        set.contains("HttpOnly") && set.contains("Path=/api/archive"),
+        "{set}"
+    );
+    let cookie = set.split(';').next().unwrap().to_string();
+
+    let (s, _, v) = archive_call(&app, Method::GET, "/api/archive", None, Some(&cookie)).await;
+    assert_eq!(s, StatusCode::OK);
+    let list = v.as_array().unwrap();
+    assert_eq!(list.len(), 1, "drafts stay hidden: {v}");
+    assert_eq!(list[0]["share_code"], code);
+    assert_eq!(list[0]["status"], "done");
+    assert_eq!(list[0]["stops"][0]["name"], "장소0-2");
+    assert_eq!(list[0]["stops"][1]["name"], "장소1-2");
+    assert!(
+        !v.to_string()
+            .contains(draft["share_code"].as_str().unwrap())
+    );
+
+    // locking clears the cookie
+    let (s, set, _) =
+        archive_call(&app, Method::POST, "/api/archive/lock", None, Some(&cookie)).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    assert!(set.unwrap().contains("Max-Age=0"));
+
+    // a right code clears an address's misses; five more pause it
+    for _ in 0..5 {
+        let (s, _, _) = archive_call(
+            &app,
+            Method::POST,
+            "/api/archive/unlock",
+            Some(json!({ "code": "999999" })),
+            None,
+        )
+        .await;
+        assert_eq!(s, StatusCode::FORBIDDEN);
+    }
+    let (s, _, _) = archive_call(
+        &app,
+        Method::POST,
+        "/api/archive/unlock",
+        Some(json!({ "code": BIRTHDAY })),
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::TOO_MANY_REQUESTS);
 }

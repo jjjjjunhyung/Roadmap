@@ -1,0 +1,267 @@
+/* Archive: the birthday lock (large printed digits, like the date on a course card) and the list
+   of every shared course as ticket stubs. */
+
+.for.home {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.for.home::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-left: 1.75px solid currentColor;
+  border-bottom: 1.75px solid currentColor;
+  transform: rotate(45deg);
+  margin-right: 2px;
+}
+
+/* ---------- lock ---------- */
+.lock .masthead h1 {
+  font-size: 28px;
+}
+.pin {
+  position: relative;
+  container-type: inline-size;
+  cursor: text;
+  -webkit-tap-highlight-color: transparent;
+}
+.pin-digits {
+  display: flex;
+  align-items: flex-start;
+  font-size: min(64px, calc(100cqi / var(--cells) * 1.35));
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.pin-group {
+  display: grid;
+  grid-template-areas: "dot cells" ". name";
+}
+.pin-dot {
+  grid-area: dot;
+  padding: 0 0.06em;
+  color: var(--muted);
+}
+.pin-cells {
+  grid-area: cells;
+  display: flex;
+  gap: 0.08em;
+}
+.pin-cell {
+  width: 0.66em;
+  padding-bottom: 0.08em;
+  text-align: center;
+  color: color-mix(in srgb, var(--ink) 12%, transparent);
+  border-bottom: 2px solid var(--line);
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+.pin-cell.on {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+  animation: pin-in 0.42s var(--spring);
+}
+.pin-cell.here {
+  animation: pin-caret 1.1s steps(1) infinite;
+}
+.pin-name {
+  grid-area: name;
+  margin-top: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+.pin.busy .pin-cell.on {
+  animation: pin-wait 0.9s ease-in-out infinite alternate;
+}
+.pin.missed .pin-digits {
+  animation: pin-shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+.pin.missed .pin-cell {
+  border-bottom-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+}
+/* the real input sits over the digits: it brings up the number pad and takes paste/autofill */
+.pin-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px;
+  opacity: 0;
+}
+.pin-hint {
+  text-align: left;
+  margin-top: -14px;
+}
+.pin-hint.bad {
+  color: var(--accent);
+  font-weight: 500;
+}
+@keyframes pin-in {
+  from {
+    transform: translateY(0.12em) scale(0.86);
+  }
+}
+@keyframes pin-caret {
+  50% {
+    border-bottom-color: var(--accent);
+  }
+}
+@keyframes pin-wait {
+  to {
+    opacity: 0.35;
+  }
+}
+@keyframes pin-shake {
+  15%,
+  85% {
+    transform: translateX(-3px);
+  }
+  30%,
+  70% {
+    transform: translateX(6px);
+  }
+  45%,
+  55% {
+    transform: translateX(-8px);
+  }
+  50% {
+    transform: translateX(8px);
+  }
+}
+
+/* ---------- list ---------- */
+.memories {
+  display: grid;
+  gap: 12px;
+}
+.memories ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+/* the shadow follows the notched shape */
+.memories li {
+  filter: drop-shadow(0 1px 0 rgb(16 19 24 / 0.04)) drop-shadow(0 10px 16px rgb(16 19 24 / 0.1));
+}
+.memory {
+  --stub: 84px;
+  display: grid;
+  grid-template-columns: var(--stub) minmax(0, 1fr);
+  background: var(--raise);
+  border-radius: 18px;
+  text-decoration: none;
+  color: inherit;
+  /* notches top and bottom where the stub tears off */
+  mask:
+    radial-gradient(circle 8px at var(--stub) 0, #0000 97%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle 8px at var(--stub) 100%, #0000 97%, #000) bottom / 100% 51% no-repeat;
+  transition: transform 0.45s var(--spring);
+}
+.memory:active {
+  transform: scale(0.98);
+  transition-duration: 0.08s;
+}
+.memory .stub {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  padding: 16px 12px 16px 16px;
+  border-right: 1.5px dashed var(--line);
+}
+.memory .stub b {
+  font-size: 23px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+.memory .stub small {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.memory .stub .yr {
+  margin-top: 8px;
+  font-weight: 600;
+}
+.memory .stub .yr.soon {
+  color: var(--accent);
+}
+.memory .body {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 16px 16px 16px 18px;
+  min-width: 0;
+}
+.memory .ttl {
+  font-size: 16.5px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.memory .route {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.memory .route span + span::before {
+  content: "→";
+  margin: 0 5px;
+  color: var(--muted);
+}
+.memory .route .todo {
+  color: var(--muted);
+}
+.memory .foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+.memory .foot:empty {
+  display: none;
+}
+.memory .thumbs {
+  display: flex;
+  padding-left: 2px;
+}
+.memory .thumbs img {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--line-2);
+  box-shadow: 0 0 0 2px var(--raise);
+}
+.memory .thumbs img + img {
+  margin-left: -7px;
+}
+.memory .status {
+  margin-left: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pin-cell.on,
+  .pin.missed .pin-digits,
+  .pin.busy .pin-cell.on {
+    animation: none;
+  }
+}

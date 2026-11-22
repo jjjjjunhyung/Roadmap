@@ -1,5 +1,6 @@
 //! Reactive UI server library: database, API routes, and the SPA fallback.
 
+pub mod archive;
 pub mod error;
 mod model;
 mod naver;
@@ -32,6 +33,8 @@ pub struct AppState {
     /// Client ID for Naver's map script. Public by design (it sits in the page and only works
     /// on registered domains), but kept out of the repo; the course map is hidden without it.
     pub naver_map_client_id: Option<Arc<str>>,
+    /// The birthday lock on the list of every shared course; the list stays closed when unset.
+    pub archive: Option<Arc<archive::Archive>>,
 }
 
 pub async fn open_database(url: &str) -> anyhow::Result<SqlitePool> {
@@ -73,6 +76,7 @@ pub fn router(state: AppState, static_dir: Option<&Path>) -> Router {
         .route("/config", get(config))
         .nest("/plan", plan::router(state.clone()))
         .nest("/pick", pick::router())
+        .merge(archive::router())
         .fallback(|| async { StatusCode::NOT_FOUND });
 
     let mut app = Router::new().nest("/api", api);
@@ -90,11 +94,14 @@ pub fn router(state: AppState, static_dir: Option<&Path>) -> Router {
 #[derive(Serialize)]
 struct ClientConfig {
     naver_map_client_id: Option<Arc<str>>,
+    /// digits of the archive passcode; null when the archive is closed
+    archive_digits: Option<usize>,
 }
 
 async fn config(State(state): State<AppState>) -> Json<ClientConfig> {
     Json(ClientConfig {
         naver_map_client_id: state.naver_map_client_id.clone(),
+        archive_digits: state.archive.as_ref().map(|a| a.digits()),
     })
 }
 

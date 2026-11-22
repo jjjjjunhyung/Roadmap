@@ -12,6 +12,8 @@ pub enum AppError {
     BadRequest(String),
     Conflict(String),
     Forbidden(&'static str),
+    Unauthorized(&'static str),
+    TooManyRequests(&'static str),
     Internal(anyhow::Error),
 }
 
@@ -38,6 +40,8 @@ impl IntoResponse for AppError {
             AppError::BadRequest(m) => (StatusCode::BAD_REQUEST, m),
             AppError::Conflict(m) => (StatusCode::CONFLICT, m),
             AppError::Forbidden(m) => (StatusCode::FORBIDDEN, m.to_string()),
+            AppError::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.to_string()),
+            AppError::TooManyRequests(m) => (StatusCode::TOO_MANY_REQUESTS, m.to_string()),
             AppError::Internal(e) => {
                 tracing::error!(error = ?e, "internal error");
                 (

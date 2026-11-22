@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { type Place, type StepSummary, configApi } from "../lib/api";
+import { type Place, type StepSummary } from "../lib/api";
+import { useConfig } from "../lib/config";
 import { auraBase, two } from "../lib/look";
 
 /* The slice of Naver's map script (maps.js v3) used here. */
@@ -88,8 +88,7 @@ const located = (p: Place | null | undefined): p is Place & { lat: number; lng: 
   !!p && p.lat !== null && p.lng !== null;
 
 function useClientId() {
-  const cfg = useQuery({ queryKey: ["config"], queryFn: configApi.get, staleTime: Infinity });
-  return cfg.data?.naver_map_client_id ?? null;
+  return useConfig().data?.naver_map_client_id ?? null;
 }
 
 /**

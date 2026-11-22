@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { type CSSProperties, type Ref, useEffect, useRef, useState } from "react";
 
 import type { Kind, Place, StepSummary } from "../lib/api";
@@ -106,12 +107,20 @@ export function SoundToggle() {
   );
 }
 
-export function Masthead({ date, title, lede }: { date: string; title: string; lede?: string }) {
+/** `home` turns "for you" into a way back to the archive of every date. */
+export function Masthead(props: { date: string; title: string; lede?: string; home?: boolean }) {
+  const { date, title, lede, home } = props;
   const d = formatDate(date);
   return (
     <header className="masthead">
       <div className="topline">
-        <span className="for">for you</span>
+        {home ? (
+          <Link className="for home" to="/">
+            우리의 데이트
+          </Link>
+        ) : (
+          <span className="for">for you</span>
+        )}
         <SoundToggle />
       </div>
       <p className="date" aria-label={d.full}>

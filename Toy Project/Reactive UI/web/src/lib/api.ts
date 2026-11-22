@@ -101,6 +101,24 @@ export interface CourseSummary {
   picked: number;
 }
 
+/** One step of a shared course in the archive; `name` is null until it has been picked. */
+export interface MemoryStop {
+  label: string;
+  kind: Kind;
+  time: string;
+  name: string | null;
+  image_url: string | null;
+}
+
+/** A shared course in the archive (drafts never appear). */
+export interface Memory {
+  share_code: string;
+  title: string;
+  date: string;
+  status: "open" | "done";
+  stops: MemoryStop[];
+}
+
 export type StepInput = Partial<
   Pick<Step, "kind" | "label" | "title" | "time" | "game" | "rerolls">
 >;
@@ -141,10 +159,19 @@ async function request<T>(
 
 export interface ClientConfig {
   naver_map_client_id: string | null;
+  /** digits of the archive passcode (a birthday); null when the archive is closed */
+  archive_digits: number | null;
 }
 
 export const configApi = {
   get: () => request<ClientConfig>("GET", "/config"),
+};
+
+/** Every shared course, behind the birthday; the server keeps the session in an HttpOnly cookie. */
+export const archiveApi = {
+  list: () => request<Memory[]>("GET", "/archive"),
+  unlock: (code: string) => request<void>("POST", "/archive/unlock", { body: { code } }),
+  lock: () => request<void>("POST", "/archive/lock"),
 };
 
 export const pickApi = {

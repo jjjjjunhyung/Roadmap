@@ -13,6 +13,8 @@ services:
       PLANNER_KEY: ${PLANNER_KEY:?PLANNER_KEY must be set in .env}
       # Naver Maps (NCP Maps > Application > Client ID); the course map is hidden when empty
       NAVER_MAP_CLIENT_ID: ${NAVER_MAP_CLIENT_ID:-}
+      # 4-8 digits (a birthday) that open the list of every shared course at /; closed when empty
+      ARCHIVE_PASSCODE: ${ARCHIVE_PASSCODE:-}
     volumes:
       - /data/reactive-ui:/data # SQLite database lives on the block volume
     stop_grace_period: 10s

@@ -7,6 +7,7 @@ import { CandidateMap, CourseMap } from "../components/Maps";
 import { Itinerary, Masthead, ResultSheet, Ticket, Toast } from "../components/ui";
 import { GAMES } from "../games";
 import { ApiError, type PickView, type Place, errorMessage, pickApi } from "../lib/api";
+import { useConfig } from "../lib/config";
 import { accent, burst, haptic, reducedMotion, sfx, viewTransition } from "../lib/feel";
 import { aura } from "../lib/look";
 
@@ -35,6 +36,7 @@ function Picker() {
   const [morph, setMorph] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [focus, setFocus] = useState<string[]>([]);
+  const home = !!useConfig().data?.archive_digits;
   const sealRef = useRef<HTMLSpanElement>(null);
   const prevStatus = useRef<string | undefined>(undefined);
   const clearToast = useCallback(() => setToast(null), []);
@@ -130,7 +132,7 @@ function Picker() {
   if (v.status === "draft") {
     return (
       <main className="page">
-        <Masthead date={v.date} title={v.title} />
+        <Masthead date={v.date} title={v.title} home={home} />
         <div className="message">
           <h2>아직 준비 중이야</h2>
           <p>조금만 기다려 줘. 준비가 끝나면 이 링크에서 바로 시작할 수 있어.</p>
@@ -147,6 +149,7 @@ function Picker() {
       <Masthead
         date={v.date}
         title={v.title}
+        home={home}
         lede={
           v.status === "done"
             ? undefined
