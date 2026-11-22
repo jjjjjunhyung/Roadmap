@@ -1,4 +1,4 @@
-//! Weather on a course's day, from Open-Meteo (free, no key; attribution shown in the app).
+//! Weather on a course's day, from Open-Meteo (free, no key).
 //!
 //! Where: the middle of the course's places (picked ones, else every candidate with a known
 //! location), rounded to about a kilometre; central Seoul when none is known.

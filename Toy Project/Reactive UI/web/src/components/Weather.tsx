@@ -127,14 +127,6 @@ export function WeatherStrip(props: {
         <span className="wx-chip">강수 {Math.round(d.precip)}mm</span>
       )}
       {note && <p className="wx-note">{note}</p>}
-      <a
-        className="wx-credit"
-        href="https://open-meteo.com/"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Open-Meteo
-      </a>
     </div>
   );
 }

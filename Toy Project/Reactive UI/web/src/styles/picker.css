@@ -716,7 +716,6 @@
   border-radius: 16px;
   background: var(--raise);
   box-shadow: var(--shadow-1);
-  position: relative;
 }
 .wx-icon {
   width: 30px;
@@ -763,15 +762,6 @@
   font-size: 13px;
   color: var(--accent);
   font-weight: 500;
-}
-.wx-credit {
-  position: absolute;
-  right: 12px;
-  bottom: -18px;
-  font-size: 10px;
-  color: var(--muted);
-  text-decoration: none;
-  letter-spacing: 0.04em;
 }
 .wx-far {
   margin: 0;
