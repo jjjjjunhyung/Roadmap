@@ -610,6 +610,9 @@
   overflow: hidden;
   background: var(--card);
   box-shadow: var(--shadow-1);
+  /* gestures over the map belong to the map: otherwise the browser takes a two-finger pinch as a
+     page zoom and the map only sees two fingers land and lift (a two-finger tap: zoom out) */
+  touch-action: none;
 }
 /* candidate map above the game */
 .cand-map {

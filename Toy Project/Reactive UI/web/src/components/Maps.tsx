@@ -11,7 +11,13 @@ interface NaverMap {
     bounds: object,
     margin?: { top: number; right: number; bottom: number; left: number },
   ): void;
-  getProjection(): { fromCoordToOffset(c: LatLng): { x: number; y: number } };
+  getProjection(): {
+    fromCoordToOffset(c: LatLng): { x: number; y: number };
+    fromOffsetToCoord(p: object): LatLng;
+  };
+  getZoom(): number;
+  setZoom(zoom: number, effect?: boolean): void;
+  zoomBy?(delta: number, origin?: LatLng, effect?: boolean): void;
   destroy(): void;
 }
 interface NaverMarker {
@@ -117,6 +123,7 @@ function MapView(props: {
     const el = box.current;
     if (!el || stops.length === 0) return;
     let map: NaverMap | null = null;
+    let unbind = () => {};
     let gone = false;
     window.navermap_authFailure = onFail;
     loadMaps(clientId)
@@ -129,7 +136,8 @@ function MapView(props: {
           zoomControl: false,
           scaleControl: false,
           mapDataControl: false,
-          // the page scrolls past this map; a wheel over it shouldn't zoom it (pinch still does)
+          // the page scrolls past this map; a wheel over it shouldn't zoom it (pinches zoom: touch
+          // through the map itself, trackpads through the handlers below)
           scrollWheel: false,
         });
         map = m;
@@ -205,6 +213,48 @@ function MapView(props: {
         live.current = { pins, markers, layout };
         maps.Event.addListener(m, "idle", layout);
 
+        // A trackpad pinch arrives as a ctrl+wheel (Chrome, Edge, Firefox) or as gesture events
+        // (Safari on a Mac); with the wheel off the map would ignore it, so zoom by hand, around
+        // the fingers. Plain scrolling still scrolls the page.
+        const zoomAt = (step: number, x: number, y: number) => {
+          const r = el.getBoundingClientRect();
+          const at = m.getProjection().fromOffsetToCoord(new maps.Point(x - r.left, y - r.top));
+          if (m.zoomBy) m.zoomBy(step, at, true);
+          else m.setZoom(m.getZoom() + step, true);
+        };
+        let pinched = 0;
+        const wheel = (e: WheelEvent) => {
+          if (!e.ctrlKey) return;
+          e.preventDefault(); // not the page's zoom
+          pinched += e.deltaY;
+          if (Math.abs(pinched) < 24) return;
+          zoomAt(pinched < 0 ? 1 : -1, e.clientX, e.clientY);
+          pinched = 0;
+        };
+        let startZoom = 0;
+        const gestureStart = (e: Event) => {
+          e.preventDefault();
+          startZoom = m.getZoom();
+        };
+        const gestureChange = (e: Event) => {
+          e.preventDefault();
+          const g = e as Event & { scale: number; clientX: number; clientY: number };
+          const target = Math.round(startZoom + Math.log2(g.scale || 1));
+          if (target !== m.getZoom()) zoomAt(target - m.getZoom(), g.clientX, g.clientY);
+        };
+        el.addEventListener("wheel", wheel, { passive: false });
+        // touch screens pinch through the map's own handling; gestures there would zoom twice
+        const touch = "ontouchstart" in window;
+        if (!touch) {
+          el.addEventListener("gesturestart", gestureStart);
+          el.addEventListener("gesturechange", gestureChange);
+        }
+        unbind = () => {
+          el.removeEventListener("wheel", wheel);
+          el.removeEventListener("gesturestart", gestureStart);
+          el.removeEventListener("gesturechange", gestureChange);
+        };
+
         if (pts.length > 1) {
           const bounds = new maps.LatLngBounds(pts[0], pts[0]);
           for (const p of pts) bounds.extend(p);
@@ -217,6 +267,7 @@ function MapView(props: {
     return () => {
       gone = true;
       live.current = null;
+      unbind();
       map?.destroy();
     };
   }, [clientId, stops, route, onFail]);
