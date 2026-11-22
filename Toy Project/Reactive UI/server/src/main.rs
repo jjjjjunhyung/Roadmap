@@ -53,7 +53,24 @@ async fn main() -> anyhow::Result<()> {
             if a.is_none() {
                 tracing::warn!("ARCHIVE_PASSCODE must be 4 to 8 digits: the archive is closed");
             }
-            a.map(Into::into)
+            let site = env::var("TURNSTILE_SITE_KEY")
+                .ok()
+                .filter(|v| !v.trim().is_empty());
+            let secret = env::var("TURNSTILE_SECRET")
+                .ok()
+                .filter(|v| !v.trim().is_empty());
+            match (a, site, secret) {
+                (Some(a), Some(site), Some(secret)) => Some(a.with_turnstile(&site, &secret)),
+                (Some(a), None, None) => {
+                    tracing::warn!("TURNSTILE_* not set: the passcode form has no bot check");
+                    Some(a)
+                }
+                (Some(_), _, _) => {
+                    anyhow::bail!("set both TURNSTILE_SITE_KEY and TURNSTILE_SECRET")
+                }
+                (None, _, _) => None,
+            }
+            .map(Into::into)
         }
         (Some(code), None) if !code.trim().is_empty() => {
             tracing::warn!("ARCHIVE_PASSCODE needs PLANNER_KEY: the archive is closed");

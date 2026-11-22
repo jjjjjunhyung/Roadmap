@@ -119,6 +119,27 @@ export interface Memory {
   stops: MemoryStop[];
 }
 
+/** One guess at the archive passcode, as the planner sees it. */
+export interface GuardAttempt {
+  /** unix seconds */
+  at: number;
+  ok: boolean;
+  /** partly hidden IPv4, or an IPv6 /64 */
+  address: string;
+  agent: string;
+}
+
+/** The birthday lock's state on the planner page. */
+export interface ArchiveGuard {
+  enabled: boolean;
+  turnstile: boolean;
+  /** unix seconds; set while too many misses keep the archive locked */
+  locked_at: number | null;
+  misses_today: number;
+  daily_limit: number;
+  recent: GuardAttempt[];
+}
+
 export type StepInput = Partial<
   Pick<Step, "kind" | "label" | "title" | "time" | "game" | "rerolls">
 >;
@@ -161,6 +182,8 @@ export interface ClientConfig {
   naver_map_client_id: string | null;
   /** digits of the archive passcode (a birthday); null when the archive is closed */
   archive_digits: number | null;
+  /** Cloudflare Turnstile site key the passcode form must pass; null when not required */
+  turnstile_site_key: string | null;
 }
 
 export const configApi = {
@@ -170,7 +193,8 @@ export const configApi = {
 /** Every shared course, behind the birthday; the server keeps the session in an HttpOnly cookie. */
 export const archiveApi = {
   list: () => request<Memory[]>("GET", "/archive"),
-  unlock: (code: string) => request<void>("POST", "/archive/unlock", { body: { code } }),
+  unlock: (code: string, turnstile = "") =>
+    request<void>("POST", "/archive/unlock", { body: { code, turnstile } }),
   lock: () => request<void>("POST", "/archive/lock"),
 };
 
@@ -212,6 +236,8 @@ export function planApi(key: string) {
       r<CourseFull>("PATCH", `/candidates/${id}`, body),
     removeCandidate: (id: string) => r<CourseFull>("DELETE", `/candidates/${id}`),
     photos: (id: string) => r<PhotoOption[]>("GET", `/candidates/${id}/photos`),
+    guard: () => r<ArchiveGuard>("GET", "/archive"),
+    reopenArchive: () => r<ArchiveGuard>("POST", "/archive/reopen"),
   };
 }
 

@@ -4,6 +4,7 @@ import { type CSSProperties, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { ApiError, type Memory, archiveApi, errorMessage } from "../lib/api";
+import { useTurnstile } from "../components/Turnstile";
 import { useConfig } from "../lib/config";
 import { haptic, sfx, viewTransition } from "../lib/feel";
 import { formatDate } from "../lib/look";
@@ -15,7 +16,11 @@ function Home() {
   const cfg = useConfig();
   if (cfg.isPending) return <main className="page" />;
   const digits = cfg.data?.archive_digits;
-  return digits ? <Archive digits={digits} /> : <Landing />;
+  return digits ? (
+    <Archive digits={digits} siteKey={cfg.data?.turnstile_site_key ?? null} />
+  ) : (
+    <Landing />
+  );
 }
 
 function Landing() {
@@ -33,7 +38,7 @@ function Landing() {
   );
 }
 
-function Archive({ digits }: { digits: number }) {
+function Archive({ digits, siteKey }: { digits: number; siteKey: string | null }) {
   const qc = useQueryClient();
   const q = useQuery({
     queryKey: ["archive"],
@@ -49,6 +54,7 @@ function Archive({ digits }: { digits: number }) {
     return (
       <Lock
         digits={digits}
+        siteKey={siteKey}
         onOpen={(list) =>
           viewTransition(() =>
             flushSync(() => {
@@ -124,7 +130,10 @@ const SPOKEN: Record<number, string> = { 4: "네", 6: "여섯", 8: "여덟" };
  * The birthday, typed into one real input laid over large printed digits (like the date on a
  * course card). It checks itself once every digit is in; a wrong code shakes and clears.
  */
-function Lock({ digits, onOpen }: { digits: number; onOpen: (list: Memory[]) => void }) {
+function Lock(props: { digits: number; siteKey: string | null; onOpen: (list: Memory[]) => void }) {
+  const { digits, siteKey, onOpen } = props;
+  const humanBox = useRef<HTMLDivElement>(null);
+  const human = useTurnstile(siteKey, humanBox);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [miss, setMiss] = useState<{ n: number; text: string } | null>(null);
@@ -133,7 +142,7 @@ function Lock({ digits, onOpen }: { digits: number; onOpen: (list: Memory[]) => 
   const submit = async (value: string) => {
     setBusy(true);
     try {
-      await archiveApi.unlock(value);
+      await archiveApi.unlock(value, await human.token());
       const list = await archiveApi.list();
       sfx.chime();
       haptic([12, 40, 24]);
@@ -142,6 +151,7 @@ function Lock({ digits, onOpen }: { digits: number; onOpen: (list: Memory[]) => 
       sfx.thud();
       haptic([30, 60, 30]);
       setMiss((m) => ({ n: (m?.n ?? 0) + 1, text: errorMessage(e) }));
+      human.reset();
       setCode("");
       setBusy(false);
       input.current?.focus();
@@ -211,6 +221,8 @@ function Lock({ digits, onOpen }: { digits: number; onOpen: (list: Memory[]) => 
       <p className={`hint pin-hint${miss ? " bad" : ""}`} role="status">
         {busy ? "확인하는 중…" : miss ? miss.text : `생일 ${SPOKEN[digits] ?? digits} 자리`}
       </p>
+      {/* Cloudflare's check: empty unless it asks for a click */}
+      <div className="ts-box" ref={humanBox} />
     </main>
   );
 }

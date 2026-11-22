@@ -11,7 +11,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
 sha2 = "0.11.1"
 sqlx = { version = "0.9.1", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
-tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "signal", "net", "sync"] }
 tower-http = { version = "0.7.1", features = ["fs", "trace", "compression-gzip", "compression-br", "set-header"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }

@@ -15,6 +15,10 @@ services:
       NAVER_MAP_CLIENT_ID: ${NAVER_MAP_CLIENT_ID:-}
       # 4-8 digits (a birthday) that open the list of every shared course at /; closed when empty
       ARCHIVE_PASSCODE: ${ARCHIVE_PASSCODE:-}
+      # Cloudflare Turnstile for that form (infra outputs turnstile_site_key / turnstile_secret);
+      # set both or neither
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
     volumes:
       - /data/reactive-ui:/data # SQLite database lives on the block volume
     stop_grace_period: 10s

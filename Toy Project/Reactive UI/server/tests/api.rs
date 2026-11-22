@@ -12,6 +12,7 @@ use tower::ServiceExt;
 
 const KEY: &str = "test-key";
 const BIRTHDAY: &str = "123456";
+const HOME: &str = "203.0.113.7";
 
 async fn app(key: Option<&str>) -> Router {
     let db = open_database("sqlite::memory:").await.unwrap();
@@ -441,9 +442,10 @@ async fn config_and_locations_reach_the_picker() {
     assert!(first.get("lat").is_some() && first["lat"].is_null());
 }
 
-/// Archive request with an optional cookie; returns status, Set-Cookie and body.
+/// Archive request from an address, with an optional cookie; returns status, Set-Cookie and body.
 async fn archive_call(
     app: &Router,
+    from: &str,
     method: Method,
     path: &str,
     body: Option<Value>,
@@ -452,7 +454,7 @@ async fn archive_call(
     let mut req = Request::builder()
         .method(method)
         .uri(path)
-        .header("cf-connecting-ip", "203.0.113.7");
+        .header("cf-connecting-ip", from);
     if let Some(c) = cookie {
         req = req.header("cookie", c);
     }
@@ -482,7 +484,7 @@ async fn archive_opens_with_the_birthday_and_lists_shared_courses() {
     let closed = app(None).await;
     let (_, v) = call(&closed, Method::GET, "/api/config", None, None).await;
     assert!(v["archive_digits"].is_null());
-    let (s, _, _) = archive_call(&closed, Method::GET, "/api/archive", None, None).await;
+    let (s, _, _) = archive_call(&closed, HOME, Method::GET, "/api/archive", None, None).await;
     assert_eq!(s, StatusCode::NOT_FOUND, "no passcode configured -> closed");
 
     let app = app(Some(KEY)).await;
@@ -517,10 +519,11 @@ async fn archive_opens_with_the_birthday_and_lists_shared_courses() {
         assert_eq!(s, StatusCode::OK);
     }
 
-    let (s, _, _) = archive_call(&app, Method::GET, "/api/archive", None, None).await;
+    let (s, _, _) = archive_call(&app, HOME, Method::GET, "/api/archive", None, None).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
     let (s, _, _) = archive_call(
         &app,
+        HOME,
         Method::GET,
         "/api/archive",
         None,
@@ -531,6 +534,7 @@ async fn archive_opens_with_the_birthday_and_lists_shared_courses() {
 
     let (s, set, _) = archive_call(
         &app,
+        HOME,
         Method::POST,
         "/api/archive/unlock",
         Some(json!({ "code": "000000" })),
@@ -543,6 +547,7 @@ async fn archive_opens_with_the_birthday_and_lists_shared_courses() {
     // separators are ignored
     let (s, set, _) = archive_call(
         &app,
+        HOME,
         Method::POST,
         "/api/archive/unlock",
         Some(json!({ "code": "12 34 56" })),
@@ -557,7 +562,8 @@ async fn archive_opens_with_the_birthday_and_lists_shared_courses() {
     );
     let cookie = set.split(';').next().unwrap().to_string();
 
-    let (s, _, v) = archive_call(&app, Method::GET, "/api/archive", None, Some(&cookie)).await;
+    let (s, _, v) =
+        archive_call(&app, HOME, Method::GET, "/api/archive", None, Some(&cookie)).await;
     assert_eq!(s, StatusCode::OK);
     let list = v.as_array().unwrap();
     assert_eq!(list.len(), 1, "drafts stay hidden: {v}");
@@ -571,30 +577,98 @@ async fn archive_opens_with_the_birthday_and_lists_shared_courses() {
     );
 
     // locking clears the cookie
-    let (s, set, _) =
-        archive_call(&app, Method::POST, "/api/archive/lock", None, Some(&cookie)).await;
+    let (s, set, _) = archive_call(
+        &app,
+        HOME,
+        Method::POST,
+        "/api/archive/lock",
+        None,
+        Some(&cookie),
+    )
+    .await;
     assert_eq!(s, StatusCode::NO_CONTENT);
     assert!(set.unwrap().contains("Max-Age=0"));
 
-    // a right code clears an address's misses; five more pause it
-    for _ in 0..5 {
-        let (s, _, _) = archive_call(
-            &app,
-            Method::POST,
-            "/api/archive/unlock",
-            Some(json!({ "code": "999999" })),
-            None,
-        )
-        .await;
-        assert_eq!(s, StatusCode::FORBIDDEN);
-    }
-    let (s, _, _) = archive_call(
-        &app,
+    let (_, v) = call(&app, Method::GET, "/api/config", None, None).await;
+    assert!(
+        v["turnstile_site_key"].is_null(),
+        "no bot check configured in tests"
+    );
+}
+
+async fn unlock_as(app: &Router, from: &str, code: &str) -> (StatusCode, Value) {
+    let (s, _, v) = archive_call(
+        app,
+        from,
         Method::POST,
         "/api/archive/unlock",
-        Some(json!({ "code": BIRTHDAY })),
+        Some(json!({ "code": code })),
         None,
     )
     .await;
+    (s, v)
+}
+
+#[tokio::test]
+async fn archive_guesses_wait_then_lock_until_the_planner_reopens() {
+    let app = app(Some(KEY)).await;
+    let (s, _) = call(&app, Method::GET, "/api/plan/archive", None, None).await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "the guard is planner-only");
+
+    // three misses in a row are free; the third says how long to wait, and then even the
+    // right code has to wait
+    for n in 1..=3 {
+        let (s, v) = unlock_as(&app, HOME, "999999").await;
+        assert_eq!(s, StatusCode::FORBIDDEN, "{v}");
+        let msg = v["error"].as_str().unwrap();
+        assert_eq!(msg.contains("1분"), n == 3, "{msg}");
+    }
+    let (s, v) = unlock_as(&app, HOME, BIRTHDAY).await;
+    assert_eq!(s, StatusCode::TOO_MANY_REQUESTS, "{v}");
+
+    // another address is not held up, and a success there resets nothing here
+    let (s, _) = unlock_as(&app, "192.0.2.10", BIRTHDAY).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (s, _) = unlock_as(&app, HOME, BIRTHDAY).await;
     assert_eq!(s, StatusCode::TOO_MANY_REQUESTS);
+
+    let g = plan(&app, Method::GET, "/archive", None).await;
+    assert_eq!(g["enabled"], true);
+    assert_eq!(g["misses_today"], 3);
+    assert_eq!(g["daily_limit"], 20);
+    assert!(g["locked_at"].is_null());
+    assert_eq!(g["recent"][0]["ok"], true);
+    assert_eq!(g["recent"][0]["address"], "192.0.2.*");
+    assert_eq!(g["recent"][1]["ok"], false);
+
+    // misses from everywhere add up to the daily limit, which locks the archive for everyone
+    let mut locked = false;
+    'outer: for n in 0..10 {
+        for _ in 0..3 {
+            let (s, v) = unlock_as(&app, &format!("198.51.100.{n}"), "999999").await;
+            if s == StatusCode::TOO_MANY_REQUESTS {
+                assert!(v["error"].as_str().unwrap().contains("잠가"), "{v}");
+                locked = true;
+                break 'outer;
+            }
+            assert_eq!(s, StatusCode::FORBIDDEN, "{v}");
+        }
+    }
+    assert!(locked);
+    let g = plan(&app, Method::GET, "/archive", None).await;
+    assert!(g["locked_at"].is_i64(), "{g}");
+    assert_eq!(g["misses_today"], 20);
+    let (s, _) = unlock_as(&app, "192.0.2.99", BIRTHDAY).await;
+    assert_eq!(
+        s,
+        StatusCode::TOO_MANY_REQUESTS,
+        "locked even for the right code"
+    );
+
+    // the planner reopens it and forgives the misses so far
+    let g = plan(&app, Method::POST, "/archive/reopen", None).await;
+    assert!(g["locked_at"].is_null());
+    assert_eq!(g["misses_today"], 0);
+    let (s, _) = unlock_as(&app, HOME, BIRTHDAY).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
 }

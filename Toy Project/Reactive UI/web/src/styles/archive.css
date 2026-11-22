@@ -265,3 +265,105 @@
     animation: none;
   }
 }
+
+/* ---------- planner: the lock's guard ---------- */
+.guard-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--raise);
+  box-shadow: var(--shadow-1);
+}
+.guard-card.locked {
+  box-shadow:
+    inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent),
+    var(--shadow-1);
+}
+.guard-head {
+  display: grid;
+  gap: 3px;
+}
+.guard-head b {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.guard-card.locked .guard-head b {
+  color: var(--accent);
+}
+.guard-meta,
+.guard-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.guard-locked {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.guard-locked p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.guard-locked .guard-err {
+  color: var(--accent);
+}
+.attempts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  border-top: 1px solid var(--line-2);
+}
+.attempts li {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-2);
+  font-size: 13px;
+}
+.attempts li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.attempts .at {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.attempts .who {
+  display: grid;
+  min-width: 0;
+}
+.attempts .who small {
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attempts .res {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.attempts .res.ok {
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+/* Turnstile only takes space when Cloudflare asks for a click */
+.ts-box:empty {
+  display: none;
+}
+.ts-box {
+  margin-top: -8px;
+}

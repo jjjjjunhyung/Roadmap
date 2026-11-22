@@ -33,6 +33,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/candidates/{id}", patch(update_candidate))
         .route("/candidates/{id}", delete(remove_candidate))
         .route("/candidates/{id}/photos", get(candidate_photos))
+        .merge(crate::archive::planner_router())
         .route_layer(middleware::from_fn_with_state(state, require_key))
 }
 
@@ -45,7 +46,7 @@ async fn require_key(
 ) -> std::result::Result<Response, AppError> {
     let Some(expected) = st.planner_key.as_deref() else {
         return Err(AppError::Forbidden(
-            "준비 화면이 설정되지 않았어 (PLANNER_KEY)",
+            "준비 화면이 설정되지 않았어 (PLANNER_KEY)".into(),
         ));
     };
     let given = req
@@ -54,7 +55,9 @@ async fn require_key(
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
     if !constant_time_eq(given.as_bytes(), expected.as_bytes()) {
-        return Err(AppError::Forbidden("준비 화면 주소를 다시 확인해 줘"));
+        return Err(AppError::Forbidden(
+            "준비 화면 주소를 다시 확인해 줘".into(),
+        ));
     }
     Ok(next.run(req).await)
 }

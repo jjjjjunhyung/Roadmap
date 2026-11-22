@@ -96,12 +96,19 @@ struct ClientConfig {
     naver_map_client_id: Option<Arc<str>>,
     /// digits of the archive passcode; null when the archive is closed
     archive_digits: Option<usize>,
+    /// Cloudflare Turnstile site key for the passcode form; null when not required
+    turnstile_site_key: Option<String>,
 }
 
 async fn config(State(state): State<AppState>) -> Json<ClientConfig> {
     Json(ClientConfig {
         naver_map_client_id: state.naver_map_client_id.clone(),
         archive_digits: state.archive.as_ref().map(|a| a.digits()),
+        turnstile_site_key: state
+            .archive
+            .as_ref()
+            .and_then(|a| a.turnstile_site_key())
+            .map(Into::into),
     })
 }
 
