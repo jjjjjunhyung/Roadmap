@@ -157,8 +157,7 @@ export function Album({ code, steps }: { code: string; steps: StepSummary[] }) {
       <p className="album-hint">
         {targetName
           ? `지금 올리는 사진은 '${targetName}'에 들어가.`
-          : "장소 탭을 고르고 올리면 그 장소 사진으로 들어가."}{" "}
-        위치 정보는 지우고 저장해.
+          : "장소 탭을 고르고 올리면 그 장소 사진으로 들어가."}
       </p>
       {note && <p className="album-note">{note}</p>}
 
