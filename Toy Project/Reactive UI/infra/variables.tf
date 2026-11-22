@@ -36,7 +36,7 @@ variable "aws_profile" {
 }
 
 variable "budget_email" {
-  description = "Where AWS cost alerts go"
+  description = "Where cost alerts go (AWS and OCI budgets)"
   type        = string
   sensitive   = true
 }
