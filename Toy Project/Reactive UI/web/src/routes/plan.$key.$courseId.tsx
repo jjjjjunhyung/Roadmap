@@ -3,6 +3,7 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { type FocusEvent, useCallback, useMemo, useState } from "react";
 
 import { Tile, Toast } from "../components/ui";
+import { WeatherStrip } from "../components/Weather";
 import { GAMES } from "../games";
 import {
   type Candidate,
@@ -58,6 +59,14 @@ function Editor() {
     queryKey: ["plan", key, "course", courseId],
     queryFn: () => api.course(courseId),
     retry: false,
+  });
+  // follows the date (and, through the cache's hour, the places)
+  const wx = useQuery({
+    queryKey: ["plan", key, "weather", courseId, q.data?.date],
+    queryFn: () => api.weather(courseId),
+    enabled: !!q.data,
+    staleTime: 10 * 60_000,
+    retry: 1,
   });
   const [toast, setToast] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -144,6 +153,11 @@ function Editor() {
           />
         </label>
       </header>
+      <WeatherStrip
+        report={wx.data}
+        who="planner"
+        outdoor={c.steps.some((s) => s.kind === "play" || s.kind === "walk")}
+      />
 
       <section className="share" aria-label="공유">
         {c.status === "draft" ? (

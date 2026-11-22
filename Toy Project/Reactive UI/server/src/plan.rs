@@ -28,6 +28,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/courses/{id}/steps/order", put(order_steps))
         .route("/courses/{id}/reset", post(reset))
         .route("/courses/{id}/history", get(history))
+        .route("/courses/{id}/weather", get(course_weather))
         .route("/steps/{id}", patch(update_step).delete(remove_step))
         .route("/steps/{id}/candidates", post(add_candidate))
         .route("/candidates/{id}", patch(update_candidate))
@@ -67,6 +68,19 @@ pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 // ---------------------------------------------------------------- courses
+
+async fn course_weather(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<crate::weather::Report>> {
+    let course = {
+        let mut conn = st.db.acquire().await?;
+        model::course(&mut conn, &id).await?
+    };
+    Ok(Json(
+        crate::weather::for_course(&st.db, &course.id, &course.date).await,
+    ))
+}
 
 #[derive(Serialize, FromRow)]
 struct CourseSummary {

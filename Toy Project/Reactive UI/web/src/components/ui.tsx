@@ -1,10 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { type CSSProperties, type Ref, useEffect, useRef, useState } from "react";
 
-import type { Kind, Place, StepSummary } from "../lib/api";
+import type { Kind, Place, StepSummary, WeatherReport } from "../lib/api";
 import { scramble, sfx, sound } from "../lib/feel";
 import { auraVars, formatDate, two } from "../lib/look";
 import { Glyph } from "./Glyph";
+import { HourWeather } from "./Weather";
 import { useReactive } from "../lib/useReactive";
 
 /**
@@ -217,10 +218,13 @@ export function Ticket({
   date,
   steps,
   sealRef,
+  weather,
 }: {
   date: string;
   steps: StepSummary[];
   sealRef?: Ref<HTMLSpanElement>;
+  /** the day's forecast: each stop shows its hour */
+  weather?: WeatherReport;
 }) {
   const d = formatDate(date);
   return (
@@ -240,7 +244,10 @@ export function Ticket({
       <ol>
         {steps.map((s) => (
           <li key={s.id}>
-            <span className="tm">{s.time || "—"}</span>
+            <span className="tm">
+              {s.time || "—"}
+              <HourWeather report={weather} time={s.time} />
+            </span>
             <span className="what">
               <span className="label">{s.label}</span>
               <b>{s.picked?.name}</b>

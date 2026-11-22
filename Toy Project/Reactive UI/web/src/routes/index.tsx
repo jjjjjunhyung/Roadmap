@@ -3,8 +3,9 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { type CSSProperties, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
-import { ApiError, type Memory, archiveApi, errorMessage } from "../lib/api";
+import { ApiError, type Memory, archiveApi, errorMessage, pickApi } from "../lib/api";
 import { useTurnstile } from "../components/Turnstile";
+import { WeatherIcon } from "../components/Weather";
 import { useConfig } from "../lib/config";
 import { haptic, sfx, viewTransition } from "../lib/feel";
 import { formatDate } from "../lib/look";
@@ -297,6 +298,7 @@ function MemoryCard({ m }: { m: Memory }) {
         <span className="stub" aria-label={d.full}>
           <b>{d.md}</b>
           <small>{d.dow}</small>
+          <StubWeather code={m.share_code} />
           <small className={`yr${soon ? " soon" : ""}`}>{soon ?? year}</small>
         </span>
         <span className="body">
@@ -325,6 +327,24 @@ function MemoryCard({ m }: { m: Memory }) {
         </span>
       </Link>
     </li>
+  );
+}
+
+/** The day's sky and high on a stub (what it was like, or the forecast). */
+function StubWeather({ code }: { code: string }) {
+  const q = useQuery({
+    queryKey: ["weather", code],
+    queryFn: () => pickApi.weather(code),
+    staleTime: 30 * 60_000,
+    retry: false,
+  });
+  const d = q.data?.day;
+  if (!d) return null;
+  return (
+    <small className="wx-stub">
+      <WeatherIcon code={d.code} />
+      {Math.round(d.max)}°
+    </small>
   );
 }
 

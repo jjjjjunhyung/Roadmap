@@ -705,3 +705,113 @@
 .cm-pin.focus span {
   font-size: 13.5px;
 }
+
+/* ---------- weather ---------- */
+.wx {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--raise);
+  box-shadow: var(--shadow-1);
+  position: relative;
+}
+.wx-icon {
+  width: 30px;
+  height: 30px;
+  color: var(--ink);
+}
+.wx-mask {
+  fill: var(--raise);
+}
+.wx-main {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.wx-label {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.wx-temp {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.wx-temp small {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.wx-chip {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.wx-note {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-2);
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 500;
+}
+.wx-credit {
+  position: absolute;
+  right: 12px;
+  bottom: -18px;
+  font-size: 10px;
+  color: var(--muted);
+  text-decoration: none;
+  letter-spacing: 0.04em;
+}
+.wx-far {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+/* one hour per ticket stop, under its time */
+.wx-hour {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+.wx-hour .wx-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+.wx-hour .wx-mask {
+  fill: var(--raise);
+}
+.ticket .tm {
+  display: grid;
+  align-content: start;
+}
+/* archive stub */
+.wx-stub {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.wx-stub .wx-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+.wx-stub .wx-mask {
+  fill: var(--raise);
+}

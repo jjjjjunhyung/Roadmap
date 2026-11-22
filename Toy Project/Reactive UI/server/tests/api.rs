@@ -672,3 +672,35 @@ async fn archive_guesses_wait_then_lock_until_the_planner_reopens() {
     let (s, _) = unlock_as(&app, HOME, BIRTHDAY).await;
     assert_eq!(s, StatusCode::NO_CONTENT);
 }
+
+#[tokio::test]
+async fn weather_far_ahead_needs_no_request() {
+    let app = app(Some(KEY)).await;
+    let c = plan(
+        &app,
+        Method::POST,
+        "/courses",
+        Some(json!({ "title": "먼 훗날", "date": "2099-12-24" })),
+    )
+    .await;
+    let (id, code) = (c["id"].as_str().unwrap(), c["share_code"].as_str().unwrap());
+
+    let (s, v) = call(
+        &app,
+        Method::GET,
+        &format!("/api/pick/{code}/weather"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["status"], "far");
+    assert!(v["days_until"].as_i64().unwrap() > 15);
+    assert!(v["day"].is_null() && v["hours"].as_array().unwrap().is_empty());
+
+    let v = plan(&app, Method::GET, &format!("/courses/{id}/weather"), None).await;
+    assert_eq!(v["status"], "far");
+
+    let (s, _) = call(&app, Method::GET, "/api/pick/nope/weather", None, None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}

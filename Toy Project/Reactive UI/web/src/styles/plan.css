@@ -80,7 +80,7 @@
 }
 .row3 {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(112px, 1.1fr) minmax(0, 0.9fr);
+  grid-template-columns: minmax(0, 1fr) minmax(126px, 1.2fr) minmax(0, 0.9fr);
   gap: 8px;
 }
 
@@ -154,6 +154,7 @@
 /* share box */
 .share {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 16px;
   border-radius: 18px;

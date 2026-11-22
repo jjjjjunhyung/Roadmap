@@ -186,6 +186,33 @@ async function request<T>(
   return data as T;
 }
 
+/** The weather on a course's day (Open-Meteo). */
+export interface WeatherDay {
+  /** WMO weather code */
+  code: number;
+  max: number;
+  min: number;
+  /** percent; forecasts only */
+  rain_chance: number | null;
+  /** millimetres */
+  precip: number | null;
+}
+
+export interface WeatherHour {
+  code: number;
+  temp: number;
+  rain_chance: number | null;
+}
+
+export interface WeatherReport {
+  /** "far": more than 15 days ahead; "none": unavailable */
+  status: "forecast" | "past" | "far" | "none";
+  days_until: number | null;
+  day: WeatherDay | null;
+  /** local hours 0–23, or empty */
+  hours: WeatherHour[];
+}
+
 export interface ClientConfig {
   naver_map_client_id: string | null;
   /** digits of the archive passcode (a birthday); null when the archive is closed */
@@ -208,6 +235,8 @@ export const archiveApi = {
 
 export const pickApi = {
   view: (code: string) => request<PickView>("GET", `/pick/${encodeURIComponent(code)}`),
+  weather: (code: string) =>
+    request<WeatherReport>("GET", `/pick/${encodeURIComponent(code)}/weather`),
   choose: (code: string, stepId: string, candidateId: string) =>
     request<PickView>("POST", `/pick/${encodeURIComponent(code)}/steps/${stepId}/pick`, {
       body: { candidate_id: candidateId },
@@ -232,6 +261,7 @@ export function planApi(key: string) {
     ) => r<CourseFull>("PATCH", `/courses/${id}`, body),
     remove: (id: string) => r<void>("DELETE", `/courses/${id}`),
     reset: (id: string) => r<CourseFull>("POST", `/courses/${id}/reset`),
+    weather: (id: string) => r<WeatherReport>("GET", `/courses/${id}/weather`),
     addStep: (id: string, body: StepInput) => r<CourseFull>("POST", `/courses/${id}/steps`, body),
     order: (id: string, ids: string[]) =>
       r<CourseFull>("PUT", `/courses/${id}/steps/order`, { ids }),

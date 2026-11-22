@@ -22,6 +22,21 @@ pub fn router() -> Router<AppState> {
         .route("/{code}", get(view))
         .route("/{code}/steps/{step}/pick", post(pick))
         .route("/{code}/steps/{step}/reroll", post(reroll))
+        .route("/{code}/weather", get(weather))
+}
+
+/// The weather on the course's day (drafts too: it gives nothing of the course away).
+async fn weather(
+    State(st): State<AppState>,
+    Path(code): Path<String>,
+) -> Result<Json<crate::weather::Report>> {
+    let course = {
+        let mut conn = st.db.acquire().await?;
+        model::course_by_code(&mut conn, &code).await?
+    };
+    Ok(Json(
+        crate::weather::for_course(&st.db, &course.id, &course.date).await,
+    ))
 }
 
 #[derive(Serialize)]

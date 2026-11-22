@@ -7,6 +7,7 @@ mod naver;
 mod pick;
 mod plan;
 pub mod validate;
+mod weather;
 
 use std::{path::Path, str::FromStr, sync::Arc, time::Duration};
 

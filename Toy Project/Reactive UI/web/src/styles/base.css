@@ -144,6 +144,8 @@ a {
   max-width: 440px;
   margin: 0 auto;
   display: grid;
+  /* one column that never grows past the screen, whatever a child's longest line */
+  grid-template-columns: minmax(0, 1fr);
   gap: 34px;
   padding-top: calc(28px + env(safe-area-inset-top, 0px));
   padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));

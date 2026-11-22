@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { CandidateMap, CourseMap } from "../components/Maps";
+import { WeatherStrip } from "../components/Weather";
 import { Itinerary, Masthead, ResultSheet, Ticket, Toast } from "../components/ui";
 import { GAMES } from "../games";
 import { ApiError, type PickView, type Place, errorMessage, pickApi } from "../lib/api";
@@ -37,6 +38,12 @@ function Picker() {
   const [toast, setToast] = useState<string | null>(null);
   const [focus, setFocus] = useState<string[]>([]);
   const home = !!useConfig().data?.archive_digits;
+  const wx = useQuery({
+    queryKey: ["weather", code],
+    queryFn: () => pickApi.weather(code),
+    staleTime: 30 * 60_000,
+    retry: 1,
+  });
   const sealRef = useRef<HTMLSpanElement>(null);
   const prevStatus = useRef<string | undefined>(undefined);
   const clearToast = useCallback(() => setToast(null), []);
@@ -133,6 +140,7 @@ function Picker() {
     return (
       <main className="page">
         <Masthead date={v.date} title={v.title} home={home} />
+        <WeatherStrip report={wx.data} />
         <div className="message">
           <h2>아직 준비 중이야</h2>
           <p>조금만 기다려 줘. 준비가 끝나면 이 링크에서 바로 시작할 수 있어.</p>
@@ -156,11 +164,12 @@ function Picker() {
             : "준비해 둔 선택지 중에서 하나씩 골라 줘. 다 고르면 오늘의 코스가 완성돼."
         }
       />
+      <WeatherStrip report={wx.data} />
       <Itinerary steps={v.steps} morph={morph} />
 
       {v.status === "done" ? (
         <>
-          <Ticket date={v.date} steps={v.steps} sealRef={sealRef} />
+          <Ticket date={v.date} steps={v.steps} sealRef={sealRef} weather={wx.data} />
           <CourseMap steps={v.steps} />
         </>
       ) : cur && game ? (
