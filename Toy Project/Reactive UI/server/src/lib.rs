@@ -1,5 +1,6 @@
 //! Reactive UI server library: database, API routes, and the SPA fallback.
 
+mod album;
 pub mod archive;
 pub mod error;
 mod model;
@@ -78,6 +79,7 @@ pub fn router(state: AppState, static_dir: Option<&Path>) -> Router {
         .nest("/plan", plan::router(state.clone()))
         .nest("/pick", pick::router())
         .merge(archive::router())
+        .merge(album::router())
         .fallback(|| async { StatusCode::NOT_FOUND });
 
     let mut app = Router::new().nest("/api", api);

@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
+import { Album } from "../components/Album";
 import { CandidateMap, CourseMap } from "../components/Maps";
 import { WeatherStrip } from "../components/Weather";
 import { Itinerary, Masthead, ResultSheet, Ticket, Toast } from "../components/ui";
@@ -171,6 +172,7 @@ function Picker() {
         <>
           <Ticket date={v.date} steps={v.steps} sealRef={sealRef} weather={wx.data} />
           <CourseMap steps={v.steps} />
+          <Album code={code} steps={v.steps} />
         </>
       ) : cur && game ? (
         <section className="stage" aria-live="polite">

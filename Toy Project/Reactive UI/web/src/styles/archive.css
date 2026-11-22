@@ -370,3 +370,214 @@
 .ts-box {
   margin-top: -8px;
 }
+
+/* ---------- album ---------- */
+.album {
+  display: grid;
+  gap: 14px;
+}
+.album-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.album-locked {
+  justify-items: start;
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--raise);
+  box-shadow: var(--shadow-1);
+}
+.album-locked p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.album-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -20px;
+  padding: 2px 20px 4px;
+}
+.album-tabs::-webkit-scrollbar {
+  display: none;
+}
+.album-tabs button {
+  flex: none;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  gap: 0 6px;
+  max-width: 170px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.album-tabs button small {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.album-tabs button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.album-tabs button i {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.album-tabs button.on {
+  background: var(--ink);
+  color: var(--paper);
+}
+.album-tabs button.on small,
+.album-tabs button.on i {
+  color: color-mix(in srgb, var(--paper) 65%, transparent);
+}
+.album-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.album-grid button {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  background: var(--line-2);
+  cursor: pointer;
+}
+.album-grid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  animation: photo-in 0.4s ease-out;
+}
+.album-empty,
+.album-hint,
+.album-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.album-empty {
+  padding: 28px 0;
+  text-align: center;
+  font-size: 13.5px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.album-note {
+  color: var(--accent);
+}
+
+/* full-screen viewer */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: rgb(8 9 12 / 0.96);
+  color: #fff;
+  animation: fade 0.25s ease-out;
+}
+.viewer-bar,
+.viewer-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+  font-size: 13px;
+  color: rgb(255 255 255 / 0.8);
+}
+.viewer-foot {
+  justify-content: center;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+.viewer-foot .btn {
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.25);
+}
+.viewer-x {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.1);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+}
+.viewer-stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* both fill the stage exactly; the photo sits inside it, whole */
+.viewer-thumb,
+.viewer-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.viewer-thumb {
+  filter: blur(14px);
+  opacity: 0.35;
+}
+.viewer-nav {
+  z-index: 1;
+}
+.viewer-img {
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.viewer-img.in {
+  opacity: 1;
+}
+.viewer-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 64px;
+  border: 0;
+  background: rgb(255 255 255 / 0.08);
+  color: #fff;
+  font-size: 28px;
+  cursor: pointer;
+}
+.viewer-nav.prev {
+  left: 0;
+  border-radius: 0 12px 12px 0;
+}
+.viewer-nav.next {
+  right: 0;
+  border-radius: 12px 0 0 12px;
+}

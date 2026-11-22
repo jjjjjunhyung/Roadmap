@@ -125,7 +125,23 @@ export interface Memory {
   date: string;
   status: "open" | "done";
   stops: MemoryStop[];
+  /** our own photos of the day (up to four), for the card */
+  photos: string[];
 }
+
+/** A photo in a course's album (the image is at photoUrl). */
+export interface AlbumPhoto {
+  id: string;
+  /** the stop it was taken at; null for the day in general */
+  step_id: string | null;
+  width: number;
+  height: number;
+  /** unix seconds */
+  created_at: number;
+}
+
+export const photoUrl = (id: string, thumb = false) =>
+  `/api/archive/photos/${encodeURIComponent(id)}${thumb ? "/thumb" : ""}`;
 
 /** One guess at the archive passcode, as the planner sees it. */
 export interface GuardAttempt {
@@ -167,15 +183,16 @@ export class ApiError extends Error {
 async function request<T>(
   method: string,
   path: string,
-  opts: { body?: unknown; key?: string } = {},
+  opts: { body?: unknown; key?: string; blob?: Blob } = {},
 ): Promise<T> {
   const headers = new Headers({ Accept: "application/json" });
-  if (opts.body !== undefined) headers.set("Content-Type", "application/json");
+  if (opts.blob) headers.set("Content-Type", opts.blob.type || "application/octet-stream");
+  else if (opts.body !== undefined) headers.set("Content-Type", "application/json");
   if (opts.key) headers.set("X-Planner-Key", opts.key);
   const res = await fetch(`/api${path}`, {
     method,
     headers,
-    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    body: opts.blob ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body)),
   });
   if (res.status === 204) return undefined as T;
   const data: unknown = await res.json().catch(() => null);
@@ -241,6 +258,19 @@ export const archiveApi = {
   unlock: (code: string, turnstile = "") =>
     request<void>("POST", "/archive/unlock", { body: { code, turnstile } }),
   lock: () => request<void>("POST", "/archive/lock"),
+};
+
+/** Photos of a course's day, behind the birthday like the archive. */
+export const albumApi = {
+  list: (code: string) =>
+    request<AlbumPhoto[]>("GET", `/archive/courses/${encodeURIComponent(code)}/photos`),
+  upload: (code: string, photo: Blob, step: string | null) =>
+    request<AlbumPhoto>(
+      "POST",
+      `/archive/courses/${encodeURIComponent(code)}/photos${step ? `?step=${encodeURIComponent(step)}` : ""}`,
+      { blob: photo },
+    ),
+  remove: (id: string) => request<void>("DELETE", `/archive/photos/${encodeURIComponent(id)}`),
 };
 
 export const pickApi = {

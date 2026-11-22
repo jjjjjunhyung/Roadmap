@@ -3,7 +3,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
-import { ApiError, type Memory, archiveApi, errorMessage, pickApi } from "../lib/api";
+import { ApiError, type Memory, archiveApi, errorMessage, photoUrl, pickApi } from "../lib/api";
 import { useTurnstile } from "../components/Turnstile";
 import { WeatherIcon } from "../components/Weather";
 import { useConfig } from "../lib/config";
@@ -353,7 +353,11 @@ function MemoryCard({ m }: { m: Memory }) {
   const year = m.date.slice(0, 4);
   const soon = dday(m.date);
   const picked = m.stops.filter((s) => s.name !== null).length;
-  const photos = m.stops.flatMap((s) => (s.image_url ? [s.image_url] : [])).slice(0, 4);
+  // our own photos of the day first; otherwise the places' photos from the map
+  const ours = m.photos.map((id) => photoUrl(id, true));
+  const photos = (
+    ours.length ? ours : m.stops.flatMap((s) => (s.image_url ? [s.image_url] : []))
+  ).slice(0, 4);
   return (
     <li>
       <Link className="memory" to="/p/$code" params={{ code: m.share_code }}>

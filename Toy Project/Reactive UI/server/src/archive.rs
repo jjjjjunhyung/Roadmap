@@ -284,6 +284,15 @@ impl Turnstile {
 
 // ------------------------------------------------------------------ routes
 
+/// Routes behind the birthday (the list, the album) call this first.
+pub(crate) fn require(st: &AppState, headers: &HeaderMap) -> Result<()> {
+    if archive(st)?.signed_in(headers) {
+        Ok(())
+    } else {
+        Err(AppError::Unauthorized("생일을 먼저 입력해 줘"))
+    }
+}
+
 fn archive(st: &AppState) -> Result<&Archive> {
     st.archive
         .as_deref()
@@ -322,6 +331,8 @@ struct Memory {
     /// "open" | "done" (drafts stay a surprise)
     status: String,
     stops: Vec<Stop>,
+    /// our own photos of the day (up to four, oldest first) for the card
+    photos: Vec<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -335,9 +346,7 @@ struct StopRow {
 }
 
 async fn list(State(st): State<AppState>, headers: HeaderMap) -> Result<Response> {
-    if !archive(&st)?.signed_in(&headers) {
-        return Err(AppError::Unauthorized("생일을 먼저 입력해 줘"));
-    }
+    require(&st, &headers)?;
     let courses = sqlx::query_as::<_, (String, String, String, String, String)>(
         "SELECT id, share_code, title, date, status FROM courses \
          WHERE deleted_at IS NULL AND status != 'draft' ORDER BY date DESC, created_at DESC",
@@ -353,6 +362,18 @@ async fn list(State(st): State<AppState>, headers: HeaderMap) -> Result<Response
     )
     .fetch_all(&st.db)
     .await?;
+    let mut photos: std::collections::HashMap<String, Vec<String>> = Default::default();
+    for (course, id) in sqlx::query_as::<_, (String, String)>(
+        "SELECT course_id, id FROM photos ORDER BY created_at, rowid",
+    )
+    .fetch_all(&st.db)
+    .await?
+    {
+        let ids = photos.entry(course).or_default();
+        if ids.len() < 4 {
+            ids.push(id);
+        }
+    }
     let mut stops: std::collections::HashMap<String, Vec<Stop>> = Default::default();
     for r in rows {
         stops.entry(r.course_id).or_default().push(Stop {
@@ -367,6 +388,7 @@ async fn list(State(st): State<AppState>, headers: HeaderMap) -> Result<Response
         .into_iter()
         .map(|(id, share_code, title, date, status)| Memory {
             stops: stops.remove(&id).unwrap_or_default(),
+            photos: photos.remove(&id).unwrap_or_default(),
             share_code,
             title,
             date,
@@ -474,7 +496,7 @@ fn with_cookie(value: &str, max_age: u64) -> Response {
     private(res)
 }
 
-fn private(mut res: Response) -> Response {
+pub(crate) fn private(mut res: Response) -> Response {
     res.headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     res

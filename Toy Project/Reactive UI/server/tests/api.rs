@@ -704,3 +704,200 @@ async fn weather_far_ahead_needs_no_request() {
     let (s, _) = call(&app, Method::GET, "/api/pick/nope/weather", None, None).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
 }
+
+/// Raw request with a byte body and an optional cookie: status, headers, body bytes.
+async fn raw(
+    app: &Router,
+    method: Method,
+    path: &str,
+    body: Vec<u8>,
+    cookie: Option<&str>,
+) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+    let mut req = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("cf-connecting-ip", HOME)
+        .header("content-type", "image/jpeg");
+    if let Some(c) = cookie {
+        req = req.header("cookie", c);
+    }
+    let res = app
+        .clone()
+        .oneshot(req.body(Body::from(body)).unwrap())
+        .await
+        .unwrap();
+    let (parts, body) = res.into_parts();
+    let bytes = body.collect().await.unwrap().to_bytes().to_vec();
+    (parts.status, parts.headers, bytes)
+}
+
+/// A phone-like JPEG: 2400×1800 with an EXIF block carrying a location.
+fn phone_photo() -> Vec<u8> {
+    use image::{DynamicImage, ImageBuffer, Rgb, codecs::jpeg::JpegEncoder};
+    let img = ImageBuffer::from_fn(2400, 1800, |x, y| {
+        Rgb([(x % 251) as u8, (y % 241) as u8, 120])
+    });
+    let mut jpg = Vec::new();
+    JpegEncoder::new_with_quality(&mut jpg, 85)
+        .encode_image(&DynamicImage::ImageRgb8(img))
+        .unwrap();
+    let payload = b"Exif\0\0MM\0*GPS 37.5665 N 126.9780 E";
+    let mut out = jpg[..2].to_vec();
+    out.extend([0xFF, 0xE1]);
+    out.extend(((payload.len() + 2) as u16).to_be_bytes());
+    out.extend(payload);
+    out.extend(&jpg[2..]);
+    out
+}
+
+#[tokio::test]
+async fn album_keeps_clean_photos_for_the_signed_in() {
+    let app = app(Some(KEY)).await;
+    let c = seeded(&app).await;
+    let draft = seeded(&app).await;
+    let id = c["id"].as_str().unwrap();
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/courses/{id}"),
+        Some(json!({ "status": "open" })),
+    )
+    .await;
+    let code = c["share_code"].as_str().unwrap();
+    let step = c["steps"][0]["id"].as_str().unwrap();
+    let other_step = draft["steps"][0]["id"].as_str().unwrap();
+    let photos = format!("/api/archive/courses/{code}/photos");
+
+    let (s, _, _) = raw(&app, Method::POST, &photos, phone_photo(), None).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED, "the birthday comes first");
+
+    let (s, set, _) = archive_call(
+        &app,
+        "192.0.2.50",
+        Method::POST,
+        "/api/archive/unlock",
+        Some(json!({ "code": BIRTHDAY })),
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let cookie = set.unwrap().split(';').next().unwrap().to_string();
+    let ck = Some(cookie.as_str());
+
+    let dc = draft["share_code"].as_str().unwrap();
+    let (s, _, _) = raw(
+        &app,
+        Method::POST,
+        &format!("/api/archive/courses/{dc}/photos"),
+        phone_photo(),
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "drafts have no album");
+
+    let (s, _, body) = raw(&app, Method::POST, &photos, phone_photo(), ck).await;
+    assert_eq!(s, StatusCode::CREATED, "{}", String::from_utf8_lossy(&body));
+    let day: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        (day["width"].as_i64(), day["height"].as_i64()),
+        (Some(1600), Some(1200))
+    );
+    assert!(day["step_id"].is_null());
+
+    let (s, _, body) = raw(
+        &app,
+        Method::POST,
+        &format!("{photos}?step={step}"),
+        phone_photo(),
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::CREATED);
+    let at_stop: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(at_stop["step_id"], step);
+
+    let (s, _, _) = raw(
+        &app,
+        Method::POST,
+        &format!("{photos}?step={other_step}"),
+        phone_photo(),
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "another course's stop");
+    let (s, _, _) = raw(&app, Method::POST, &photos, b"not a photo".to_vec(), ck).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+
+    let (s, _, body) = raw(&app, Method::GET, &photos, vec![], ck).await;
+    assert_eq!(s, StatusCode::OK);
+    let list: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(list.as_array().unwrap().len(), 2);
+
+    // served clean, privately, only to the signed-in
+    let pid = day["id"].as_str().unwrap();
+    for path in [
+        format!("/api/archive/photos/{pid}"),
+        format!("/api/archive/photos/{pid}/thumb"),
+    ] {
+        let (s, h, bytes) = raw(&app, Method::GET, &path, vec![], ck).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(h["content-type"], "image/jpeg");
+        assert!(h["cache-control"].to_str().unwrap().starts_with("private"));
+        assert_eq!(&bytes[..2], &[0xFF, 0xD8]);
+        assert!(
+            !bytes.windows(3).any(|w| w == b"GPS"),
+            "location must not survive"
+        );
+        let (s, _, _) = raw(&app, Method::GET, &path, vec![], None).await;
+        assert_eq!(s, StatusCode::UNAUTHORIZED);
+    }
+
+    // the archive card shows our photos
+    let (_, _, v) = archive_call(&app, HOME, Method::GET, "/api/archive", None, ck).await;
+    let card = v
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["share_code"] == code)
+        .unwrap()
+        .clone();
+    assert_eq!(card["photos"][0], pid);
+
+    // deleting is for good
+    let (s, _, _) = raw(
+        &app,
+        Method::DELETE,
+        &format!("/api/archive/photos/{pid}"),
+        vec![],
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    let (s, _, _) = raw(
+        &app,
+        Method::DELETE,
+        &format!("/api/archive/photos/{pid}"),
+        vec![],
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (s, _, _) = raw(
+        &app,
+        Method::GET,
+        &format!("/api/archive/photos/{pid}"),
+        vec![],
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (_, _, body) = raw(&app, Method::GET, &photos, vec![], ck).await;
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
