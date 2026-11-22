@@ -4,10 +4,10 @@ use crate::error::{Result, bad};
 
 /// Games the web app can play; keep in step with `web/src/games/index.ts`.
 pub const GAMES: &[&str] = &[
-    "worldcup", "swipe", "flip", "roulette", "slot", "ladder", "gacha",
+    "worldcup", "swipe", "flip", "roulette", "slot", "ladder", "gacha", "balance",
 ];
 /// Games that end on chance and therefore offer "try again".
-pub const LUCK_GAMES: &[&str] = &["flip", "roulette", "slot", "ladder", "gacha"];
+pub const LUCK_GAMES: &[&str] = &["flip", "roulette", "slot", "ladder", "gacha", "balance"];
 pub const KINDS: &[&str] = &["meal", "cafe", "play", "dinner", "drink", "walk"];
 
 pub fn text(value: &str, field: &str, max: usize) -> Result<String> {

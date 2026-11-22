@@ -120,7 +120,7 @@ async fn new_course_gets_template_and_validates_input() {
     assert_eq!(c["status"], "draft");
     let sid = c["steps"][0]["id"].as_str().unwrap();
     for game in [
-        "worldcup", "swipe", "flip", "roulette", "slot", "ladder", "gacha",
+        "worldcup", "swipe", "flip", "roulette", "slot", "ladder", "gacha", "balance",
     ] {
         let s = plan(
             &app,

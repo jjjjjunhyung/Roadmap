@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 
 import type { GameId } from "../lib/api";
+import { Balance } from "./Balance";
 import { Flip } from "./Flip";
 import { Gacha } from "./Gacha";
 import { Ladder } from "./Ladder";
@@ -49,5 +50,11 @@ export const GAMES: Record<
     desc: "손잡이를 돌려서 캡슐 하나 뽑기",
     luck: true,
     Component: Gacha,
+  },
+  balance: {
+    name: "밸런스 게임",
+    desc: "둘 중 하나를 고를 때마다 몰래 짝지은 후보 절반이 떨어지기",
+    luck: true,
+    Component: Balance,
   },
 };
