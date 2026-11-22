@@ -21,6 +21,9 @@ services:
       TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
       # Write-only Object Storage URL for the daily database backup (infra output backup_url)
       BACKUP_URL: ${BACKUP_URL:-}
+      # Shared with CloudFront (infra output origin_secret): marks requests whose
+      # CloudFront-Viewer-Address names the real visitor
+      ORIGIN_SECRET: ${ORIGIN_SECRET:-}
     volumes:
       - /data/reactive-ui:/data # SQLite database lives on the block volume
     stop_grace_period: 10s

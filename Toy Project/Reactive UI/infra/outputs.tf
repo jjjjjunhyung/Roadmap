@@ -55,3 +55,14 @@ output "backup_url" {
   value       = "https://objectstorage.${var.region}.oraclecloud.com${oci_objectstorage_preauthrequest.backup_upload.access_uri}"
   sensitive   = true
 }
+
+output "cloudfront_domain" {
+  description = "CloudFront's own hostname (to test before switching front_door)"
+  value       = aws_cloudfront_distribution.web.domain_name
+}
+
+output "origin_secret" {
+  description = "Goes into ORIGIN_SECRET in the VM's .env: proves a request came through CloudFront"
+  value       = random_password.origin_secret.result
+  sensitive   = true
+}

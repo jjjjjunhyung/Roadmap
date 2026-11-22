@@ -28,3 +28,25 @@ variable "region" {
   description = "OCI region of the resources (as in ~/.oci/config), e.g. for service names in policies"
   type        = string
 }
+
+variable "aws_profile" {
+  description = "AWS CLI profile (IAM Identity Center) used for CloudFront, ACM and Budgets"
+  type        = string
+  default     = "reactive-ui"
+}
+
+variable "budget_email" {
+  description = "Where AWS cost alerts go"
+  type        = string
+  sensitive   = true
+}
+
+variable "front_door" {
+  description = "Who answers for the site's hostnames: \"cloudflare\" (proxy + tunnel) or \"cloudfront\" (CloudFront in Seoul, then the tunnel)"
+  type        = string
+  default     = "cloudflare"
+  validation {
+    condition     = contains(["cloudflare", "cloudfront"], var.front_door)
+    error_message = "front_door must be \"cloudflare\" or \"cloudfront\"."
+  }
+}

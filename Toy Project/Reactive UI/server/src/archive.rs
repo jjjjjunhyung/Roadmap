@@ -140,17 +140,6 @@ fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
         .find_map(|kv| kv.trim().strip_prefix(name)?.strip_prefix('='))
 }
 
-/// The visitor's IP from Cloudflare's header (the tunnel is the only way in).
-fn client_ip(headers: &HeaderMap) -> Option<IpAddr> {
-    headers
-        .get("cf-connecting-ip")?
-        .to_str()
-        .ok()?
-        .trim()
-        .parse()
-        .ok()
-}
-
 /// Who the limits apply to: the IPv4 address, or the IPv6 /64 (one home or phone gets a whole
 /// /64, so counting single IPv6 addresses would let one device rotate freely).
 fn address(ip: Option<IpAddr>) -> String {
@@ -411,7 +400,7 @@ async fn unlock(
     Json(body): Json<Unlock>,
 ) -> Result<Response> {
     let a = archive(&st)?;
-    let ip = client_ip(&headers);
+    let ip = crate::client_ip(st.origin_secret.as_deref(), &headers);
     if let Some(t) = &a.turnstile {
         t.verify(&body.turnstile, ip).await?;
     }

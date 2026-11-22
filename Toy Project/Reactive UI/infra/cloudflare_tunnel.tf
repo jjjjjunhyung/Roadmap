@@ -19,7 +19,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "web" {
 
   config = {
     ingress = concat(
-      [for h in local.web_hostnames : { hostname = h, service = local.origin_service }],
+      [for h in concat(local.web_hostnames, [local.origin_hostname]) : { hostname = h, service = local.origin_service }],
       [{ service = "http_status:404" }], # catch-all (required last rule)
     )
   }
@@ -30,16 +30,29 @@ data "cloudflare_zero_trust_tunnel_cloudflared_token" "web" {
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.web.id
 }
 
+# The public hostnames: through Cloudflare's proxy to the tunnel, or (front_door = "cloudfront")
+# to CloudFront in Seoul, DNS only (the apex CNAME is flattened by Cloudflare).
 resource "cloudflare_dns_record" "web" {
   for_each = toset(local.web_hostnames)
 
   zone_id = cloudflare_zone.main.id
   name    = each.value
   type    = "CNAME"
+  content = var.front_door == "cloudfront" ? aws_cloudfront_distribution.web.domain_name : "${cloudflare_zero_trust_tunnel_cloudflared.web.id}.cfargotunnel.com"
+  proxied = var.front_door != "cloudfront"
+  ttl     = var.front_door == "cloudfront" ? 300 : 1 # 1 = automatic (required when proxied)
+  comment = var.front_door == "cloudfront" ? "CloudFront (Seoul front door)" : "Cloudflare Tunnel: reactive-ui"
+}
+
+# CloudFront's way in: proxied by Cloudflare (Seoul PoP for datacenter networks) to the tunnel.
+resource "cloudflare_dns_record" "origin" {
+  zone_id = cloudflare_zone.main.id
+  name    = local.origin_hostname
+  type    = "CNAME"
   content = "${cloudflare_zero_trust_tunnel_cloudflared.web.id}.cfargotunnel.com"
   proxied = true
-  ttl     = 1 # automatic (required for proxied records)
-  comment = "Cloudflare Tunnel: reactive-ui"
+  ttl     = 1
+  comment = "Origin for CloudFront -> Cloudflare Tunnel"
 }
 
 # HTTPS-only with modern TLS at the edge.

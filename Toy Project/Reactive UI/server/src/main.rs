@@ -113,6 +113,11 @@ async fn main() -> anyhow::Result<()> {
             .map(Into::into),
         archive,
         backup: backup.clone(),
+        origin_secret: env::var("ORIGIN_SECRET")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| v.len() >= 16)
+            .map(Into::into),
     };
     if let Some(b) = backup {
         backup::spawn(state.db.clone(), b);

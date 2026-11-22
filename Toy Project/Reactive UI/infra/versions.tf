@@ -10,6 +10,14 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "~> 5.29"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.7"
+    }
   }
 
   # State lives in OCI Object Storage (bucket created by ./bootstrap).

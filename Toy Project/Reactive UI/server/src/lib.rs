@@ -12,10 +12,17 @@ pub mod validate;
 mod weather;
 mod wishes;
 
-use std::{path::Path, str::FromStr, sync::Arc, time::Duration};
+use std::{net::IpAddr, path::Path, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
+use axum::{
+    Json, Router,
+    extract::{Request, State},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    middleware::{self, Next},
+    response::Response,
+    routing::get,
+};
 use serde::Serialize;
 use sqlx::{
     SqlitePool,
@@ -41,6 +48,44 @@ pub struct AppState {
     pub archive: Option<Arc<archive::Archive>>,
     /// Daily database backup to Object Storage; off when BACKUP_URL is unset.
     pub backup: Option<Arc<backup::Backup>>,
+    /// Shared with CloudFront (X-Origin-Verify): requests carrying it may name the real
+    /// client in CloudFront-Viewer-Address.
+    pub origin_secret: Option<Arc<str>>,
+}
+
+/// The visitor's IP. Requests from CloudFront (they carry the shared secret) name it in
+/// CloudFront-Viewer-Address; otherwise Cloudflare's CF-Connecting-IP. The VM is only reachable
+/// through the tunnel, so neither header can come straight from a visitor.
+pub(crate) fn client_ip(origin_secret: Option<&str>, headers: &HeaderMap) -> Option<IpAddr> {
+    let text = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    let from_cloudfront = origin_secret.is_some_and(|secret| {
+        text("x-origin-verify")
+            .is_some_and(|given| plan::constant_time_eq(given.as_bytes(), secret.as_bytes()))
+    });
+    if from_cloudfront {
+        // "203.0.113.7:46532" or "2001:db8::1:46532"
+        let (ip, _port) = text("cloudfront-viewer-address")?.trim().rsplit_once(':')?;
+        return ip.trim_matches(['[', ']']).parse().ok();
+    }
+    text("cf-connecting-ip")?.trim().parse().ok()
+}
+
+/// Build files carry a content hash in their names, so they can be kept for a year; everything
+/// else outside the API (the page itself) is checked again on every visit.
+async fn cache_static(req: Request, next: Next) -> Response {
+    let path = req.uri().path().to_owned();
+    let mut res = next.run(req).await;
+    if path.starts_with("/api/") {
+        return res;
+    }
+    let policy = if path.starts_with("/assets/") && res.status().is_success() {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
+    res.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static(policy));
+    res
 }
 
 pub async fn open_database(url: &str) -> anyhow::Result<SqlitePool> {
@@ -90,10 +135,14 @@ pub fn router(state: AppState, static_dir: Option<&Path>) -> Router {
     let mut app = Router::new().nest("/api", api);
     if let Some(dir) = static_dir {
         // Unknown non-API paths return index.html so client-side routes survive a reload.
+        // build files are served as they are (a missing one is a 404, never the page);
+        // every other path is the app, so client-side routes survive a reload
         app = app
+            .nest_service("/assets", ServeDir::new(dir.join("assets")))
             .fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))));
     }
-    app.layer(CompressionLayer::new())
+    app.layer(middleware::from_fn(cache_static))
+        .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -147,4 +196,49 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
             db: if db_ok { "ok" } else { "error" },
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn headers(pairs: &[(&'static str, &str)]) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        for (k, v) in pairs {
+            h.insert(*k, HeaderValue::from_str(v).unwrap());
+        }
+        h
+    }
+
+    #[test]
+    fn trusts_cloudfront_only_with_the_secret() {
+        let ip = |s: &str| Some(s.parse::<IpAddr>().unwrap());
+        let via_cf = headers(&[
+            ("x-origin-verify", "s3cret"),
+            ("cloudfront-viewer-address", "203.0.113.7:46532"),
+            ("cf-connecting-ip", "198.51.100.1"),
+        ]);
+        assert_eq!(client_ip(Some("s3cret"), &via_cf), ip("203.0.113.7"));
+        assert_eq!(
+            client_ip(Some("other"), &via_cf),
+            ip("198.51.100.1"),
+            "wrong secret"
+        );
+        assert_eq!(
+            client_ip(None, &via_cf),
+            ip("198.51.100.1"),
+            "no secret configured"
+        );
+        let v6 = headers(&[
+            ("x-origin-verify", "s3cret"),
+            ("cloudfront-viewer-address", "2001:db8::1:46532"),
+        ]);
+        assert_eq!(client_ip(Some("s3cret"), &v6), ip("2001:db8::1"));
+        let forged = headers(&[("cloudfront-viewer-address", "192.0.2.9:1")]);
+        assert_eq!(
+            client_ip(Some("s3cret"), &forged),
+            None,
+            "no secret, no trust"
+        );
+    }
 }

@@ -24,6 +24,7 @@ async fn app(key: Option<&str>) -> Router {
             naver_map_client_id: Some("test-map-id".into()),
             archive: key.and_then(|k| Archive::new(BIRTHDAY, k)).map(Into::into),
             backup: None,
+            origin_secret: None,
         },
         None,
     )
@@ -1161,4 +1162,57 @@ async fn wishes_become_candidates_and_show_once_visited() {
     )
     .await;
     assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+/// Hashed build files are cached for a year, the page itself is always revalidated, the API
+/// is left alone.
+#[tokio::test]
+async fn static_files_carry_cache_rules() {
+    let dir = std::env::temp_dir().join(format!("reactive-ui-static-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("assets")).unwrap();
+    std::fs::write(dir.join("index.html"), "<!doctype html>").unwrap();
+    std::fs::write(dir.join("assets/app-1a2b.js"), "console.log(1)").unwrap();
+    let db = open_database("sqlite::memory:").await.unwrap();
+    let app = router(
+        AppState {
+            db,
+            revision: "test".into(),
+            planner_key: None,
+            naver_map_client_id: None,
+            archive: None,
+            backup: None,
+            origin_secret: None,
+        },
+        Some(&dir),
+    );
+    let get = |path: &'static str| {
+        let app = app.clone();
+        async move {
+            let res = app
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            (
+                res.status(),
+                res.headers()
+                    .get("cache-control")
+                    .map(|v| v.to_str().unwrap().to_string()),
+            )
+        }
+    };
+    let (s, cc) = get("/assets/app-1a2b.js").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(cc.as_deref(), Some("public, max-age=31536000, immutable"));
+    let (_, cc) = get("/p/abc").await;
+    assert_eq!(cc.as_deref(), Some("no-cache"), "the SPA page");
+    let (s, cc) = get("/assets/missing.js").await;
+    assert_eq!(
+        s,
+        StatusCode::NOT_FOUND,
+        "a missing build file is not the page"
+    );
+    assert_eq!(cc.as_deref(), Some("no-cache"), "and is not kept");
+    let (_, cc) = get("/api/health").await;
+    assert_eq!(cc, None);
+    std::fs::remove_dir_all(&dir).unwrap();
 }
