@@ -40,7 +40,7 @@ if [[ -f "$HOME/.oci/config" ]]; then
   sed -nE 's/^(user|tenancy|fingerprint)[[:space:]]*=[[:space:]]*(.+)$/\2/p' "$HOME/.oci/config" >> "$VALUES"
 fi
 if command -v security >/dev/null 2>&1; then
-  for svc in cloudflare-api-token reactive-ui-planner-key naver-map-client-id reactive-ui-archive-passcode; do
+  for svc in cloudflare-api-token reactive-ui-planner-key naver-map-client-id; do
     security find-generic-password -s "$svc" -w 2>/dev/null >> "$VALUES" || true
   done
 fi

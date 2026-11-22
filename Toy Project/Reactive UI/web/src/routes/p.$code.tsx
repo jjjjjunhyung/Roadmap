@@ -37,7 +37,7 @@ function Picker() {
   const [morph, setMorph] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [focus, setFocus] = useState<string[]>([]);
-  const home = !!useConfig().data?.archive_digits;
+  const home = !!useConfig().data?.auth;
   const wx = useQuery({
     queryKey: ["weather", code],
     queryFn: () => pickApi.weather(code),

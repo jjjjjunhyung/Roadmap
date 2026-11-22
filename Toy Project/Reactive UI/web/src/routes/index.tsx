@@ -1,27 +1,23 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { type CSSProperties, useRef, useState } from "react";
+import { useState } from "react";
 import { flushSync } from "react-dom";
 
-import { ApiError, type Memory, archiveApi, errorMessage, pickApi } from "../lib/api";
-import { useTurnstile } from "../components/Turnstile";
+import { OutsideHint, PasskeyGlyph } from "../components/Passkey";
 import { WeatherIcon } from "../components/Weather";
+import { ApiError, type Memory, archiveApi, authApi, errorMessage, pickApi } from "../lib/api";
 import { useConfig } from "../lib/config";
 import { haptic, sfx, viewTransition } from "../lib/feel";
 import { formatDate } from "../lib/look";
+import { passkeysWork, signIn } from "../lib/passkey";
 
 export const Route = createFileRoute("/")({ component: Home });
 
-/** The bare domain: a birthday lock in front of every shared course, or nothing without one. */
+/** The bare domain: passkey sign-in in front of every shared course, or nothing without it. */
 function Home() {
   const cfg = useConfig();
   if (cfg.isPending) return <main className="page" />;
-  const digits = cfg.data?.archive_digits;
-  return digits ? (
-    <Archive digits={digits} siteKey={cfg.data?.turnstile_site_key ?? null} />
-  ) : (
-    <Landing />
-  );
+  return cfg.data?.auth ? <Archive /> : <Landing />;
 }
 
 function Landing() {
@@ -39,7 +35,7 @@ function Landing() {
   );
 }
 
-function Archive({ digits, siteKey }: { digits: number; siteKey: string | null }) {
+function Archive() {
   const qc = useQueryClient();
   const q = useQuery({
     queryKey: ["archive"],
@@ -47,20 +43,24 @@ function Archive({ digits, siteKey }: { digits: number; siteKey: string | null }
     retry: false,
     staleTime: 60_000,
   });
+  const me = useQuery({
+    queryKey: ["me"],
+    queryFn: authApi.me,
+    retry: false,
+    enabled: q.isSuccess,
+  });
 
-  // set by "잠그기" so the lock shows at once, without waiting for a refetch
-  const [locked, setLocked] = useState(false);
+  // set by "로그아웃" so the sign-in shows at once, without waiting for a refetch
+  const [out, setOut] = useState(false);
 
-  if (locked || (q.error instanceof ApiError && q.error.status === 401)) {
+  if (out || (q.error instanceof ApiError && q.error.status === 401)) {
     return (
-      <Lock
-        digits={digits}
-        siteKey={siteKey}
-        onOpen={(list) =>
+      <SignIn
+        onIn={(list) =>
           viewTransition(() =>
             flushSync(() => {
               qc.setQueryData(["archive"], list);
-              setLocked(false);
+              setOut(false);
             }),
           )
         }
@@ -81,92 +81,41 @@ function Archive({ digits, siteKey }: { digits: number; siteKey: string | null }
   return (
     <Memories
       list={q.data}
+      me={me.data?.name}
       onLock={async () => {
-        await archiveApi.lock().catch(() => undefined);
+        await authApi.logout().catch(() => undefined);
         sfx.tap();
-        await viewTransition(() => flushSync(() => setLocked(true)));
-        // the list must not come back from memory on the next visit to this page
+        await viewTransition(() => flushSync(() => setOut(true)));
+        // nothing of the list or the person stays in memory for the next visit
         qc.removeQueries({ queryKey: ["archive"] });
+        qc.removeQueries({ queryKey: ["me"] });
       }}
     />
   );
 }
 
-/** How the digits are grouped and named: 6 → YY MM DD, 8 → YYYY MM DD, 4 → MM DD. */
-function groupsOf(digits: number): [number, string][] {
-  if (digits === 6)
-    return [
-      [2, "YY"],
-      [2, "MM"],
-      [2, "DD"],
-    ];
-  if (digits === 8)
-    return [
-      [4, "YYYY"],
-      [2, "MM"],
-      [2, "DD"],
-    ];
-  if (digits === 4)
-    return [
-      [2, "MM"],
-      [2, "DD"],
-    ];
-  return [[digits, ""]];
-}
-
-/** The groups with the input positions each one shows. */
-function cellsOf(digits: number) {
-  const out: { name: string; cells: number[] }[] = [];
-  let at = 0;
-  for (const [size, name] of groupsOf(digits)) {
-    out.push({ name, cells: Array.from({ length: size }, (_, k) => at + k) });
-    at += size;
-  }
-  return out;
-}
-
-const SPOKEN: Record<number, string> = { 4: "네", 6: "여섯", 8: "여덟" };
-
-/**
- * The birthday, typed into one real input laid over large printed digits (like the date on a
- * course card). It checks itself once every digit is in; a wrong code shakes and clears.
- */
-function Lock(props: { digits: number; siteKey: string | null; onOpen: (list: Memory[]) => void }) {
-  const { digits, siteKey, onOpen } = props;
-  const humanBox = useRef<HTMLDivElement>(null);
-  const human = useTurnstile(siteKey, humanBox);
-  const [code, setCode] = useState("");
+/** Face ID, a fingerprint or the device's screen lock; other computers get a QR code from the browser. */
+function SignIn({ onIn }: { onIn: (list: Memory[]) => void }) {
   const [busy, setBusy] = useState(false);
-  const [miss, setMiss] = useState<{ n: number; text: string } | null>(null);
-  const input = useRef<HTMLInputElement>(null);
+  const [miss, setMiss] = useState<string | null>(null);
+  const works = passkeysWork();
 
-  const submit = async (value: string) => {
+  const go = async () => {
     setBusy(true);
+    setMiss(null);
     try {
-      await archiveApi.unlock(value, await human.token());
+      await signIn();
       const list = await archiveApi.list();
       sfx.chime();
       haptic([12, 40, 24]);
-      onOpen(list);
+      onIn(list);
     } catch (e) {
       sfx.thud();
       haptic([30, 60, 30]);
-      setMiss((m) => ({ n: (m?.n ?? 0) + 1, text: errorMessage(e) }));
-      human.reset();
-      setCode("");
+      setMiss(errorMessage(e));
       setBusy(false);
-      input.current?.focus();
     }
   };
-
-  const change = (raw: string) => {
-    const next = raw.replace(/\D/g, "").slice(0, digits);
-    if (next.length > code.length) sfx.tick();
-    setCode(next);
-    if (next.length === digits) void submit(next);
-  };
-
-  const groups = cellsOf(digits);
 
   return (
     <main className="page lock">
@@ -175,55 +124,25 @@ function Lock(props: { digits: number; siteKey: string | null; onOpen: (list: Me
           <span className="for">for you</span>
         </div>
         <span className="label">Archive</span>
-        <h1>생일을 눌러 줘</h1>
-        <p className="lede">지금까지 함께 고른 데이트가 모두 여기 있어.</p>
+        <h1>우리의 데이트</h1>
+        <p className="lede">지금까지 함께 고른 데이트가 모두 여기 있어. 등록한 기기로 들어와 줘.</p>
       </header>
 
-      <div
-        key={miss?.n ?? 0}
-        className={`pin${miss ? " missed" : ""}${busy ? " busy" : ""}`}
-        style={{ "--cells": digits + (groups.length - 1) * 0.45 } as CSSProperties}
-        onClick={() => input.current?.focus()}
-      >
-        <div className="pin-digits" aria-hidden="true">
-          {groups.map((g, gi) => (
-            <span key={g.name || gi} className="pin-group">
-              {gi > 0 && <span className="pin-dot">.</span>}
-              <span className="pin-cells">
-                {g.cells.map((i) => (
-                  <span
-                    key={i}
-                    className={`pin-cell${i < code.length ? " on" : ""}${i === code.length && !busy ? " here" : ""}`}
-                  >
-                    {code[i] ?? "0"}
-                  </span>
-                ))}
-              </span>
-              {g.name && <span className="pin-name">{g.name}</span>}
-            </span>
-          ))}
-        </div>
-        <input
-          ref={input}
-          className="pin-input"
-          value={code}
-          onChange={(e) => change(e.target.value)}
-          inputMode="numeric"
-          pattern="[0-9]*"
-          autoComplete="off"
-          enterKeyHint="done"
-          maxLength={digits}
-          disabled={busy}
-          aria-label={`생일 ${digits}자리`}
-          autoFocus
-        />
-      </div>
+      <OutsideHint />
 
-      <p className={`hint pin-hint${miss ? " bad" : ""}`} role="status">
-        {busy ? "확인하는 중…" : miss ? miss.text : `생일 ${SPOKEN[digits] ?? digits} 자리`}
-      </p>
-      {/* Cloudflare's check: empty unless it asks for a click */}
-      <div className="ts-box" ref={humanBox} />
+      <div className="enter">
+        <button className="btn ink enter-btn" disabled={busy || !works} onClick={go}>
+          <PasskeyGlyph />
+          {busy ? "확인하는 중…" : "들어가기"}
+        </button>
+        <p className={`hint enter-hint${miss ? " bad" : ""}`} role="status">
+          {miss ??
+            (works
+              ? "Face ID나 지문으로 확인해. 다른 컴퓨터라면 QR로 휴대폰을 연결하면 돼."
+              : "이 브라우저에서는 패스키를 쓸 수 없어. Safari나 Chrome으로 열어 줘.")}
+        </p>
+        <p className="hint enter-hint">처음이라면 받은 등록 링크로 먼저 들어와 줘.</p>
+      </div>
     </main>
   );
 }
@@ -242,7 +161,8 @@ function dday(iso: string) {
   return n === 0 ? "오늘" : n > 0 ? `D-${n}` : null;
 }
 
-function Memories({ list, onLock }: { list: Memory[]; onLock: () => void }) {
+function Memories(props: { list: Memory[]; me?: string; onLock: () => void }) {
+  const { list, me, onLock } = props;
   const done = list.filter((m) => m.status === "done");
   const sections = [
     // still being chosen, then finished ones still ahead (soonest first), then the past
@@ -254,9 +174,9 @@ function Memories({ list, onLock }: { list: Memory[]; onLock: () => void }) {
     <main className="page">
       <header className="masthead">
         <div className="topline">
-          <span className="for">for you</span>
+          <span className="for">{me ? `for ${me}` : "for you"}</span>
           <button className="btn small ghost" onClick={onLock}>
-            잠그기
+            로그아웃
           </button>
         </div>
         <span className="label">Archive</span>

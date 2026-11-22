@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as PCodeRouteImport } from './routes/p.$code'
 import { Route as PlanKeyIndexRouteImport } from './routes/plan.$key.index'
 import { Route as PlanKeyCourseIdRouteImport } from './routes/plan.$key.$courseId'
@@ -17,6 +18,11 @@ import { Route as PlanKeyCourseIdRouteImport } from './routes/plan.$key.$courseI
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JoinTokenRoute = JoinTokenRouteImport.update({
+  id: '/join/$token',
+  path: '/join/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PCodeRoute = PCodeRouteImport.update({
@@ -37,12 +43,14 @@ const PlanKeyCourseIdRoute = PlanKeyCourseIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/join/$token': typeof JoinTokenRoute
   '/p/$code': typeof PCodeRoute
   '/plan/$key/$courseId': typeof PlanKeyCourseIdRoute
   '/plan/$key/': typeof PlanKeyIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/join/$token': typeof JoinTokenRoute
   '/p/$code': typeof PCodeRoute
   '/plan/$key/$courseId': typeof PlanKeyCourseIdRoute
   '/plan/$key': typeof PlanKeyIndexRoute
@@ -50,20 +58,29 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/join/$token': typeof JoinTokenRoute
   '/p/$code': typeof PCodeRoute
   '/plan/$key/$courseId': typeof PlanKeyCourseIdRoute
   '/plan/$key/': typeof PlanKeyIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/p/$code' | '/plan/$key/$courseId' | '/plan/$key/'
+  fullPaths:
+    '/' | '/join/$token' | '/p/$code' | '/plan/$key/$courseId' | '/plan/$key/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/p/$code' | '/plan/$key/$courseId' | '/plan/$key'
-  id: '__root__' | '/' | '/p/$code' | '/plan/$key/$courseId' | '/plan/$key/'
+  to: '/' | '/join/$token' | '/p/$code' | '/plan/$key/$courseId' | '/plan/$key'
+  id:
+    | '__root__'
+    | '/'
+    | '/join/$token'
+    | '/p/$code'
+    | '/plan/$key/$courseId'
+    | '/plan/$key/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  JoinTokenRoute: typeof JoinTokenRoute
   PCodeRoute: typeof PCodeRoute
   PlanKeyCourseIdRoute: typeof PlanKeyCourseIdRoute
   PlanKeyIndexRoute: typeof PlanKeyIndexRoute
@@ -76,6 +93,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/join/$token': {
+      id: '/join/$token'
+      path: '/join/$token'
+      fullPath: '/join/$token'
+      preLoaderRoute: typeof JoinTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/p/$code': {
@@ -104,6 +128,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  JoinTokenRoute: JoinTokenRoute,
   PCodeRoute: PCodeRoute,
   PlanKeyCourseIdRoute: PlanKeyCourseIdRoute,
   PlanKeyIndexRoute: PlanKeyIndexRoute,
