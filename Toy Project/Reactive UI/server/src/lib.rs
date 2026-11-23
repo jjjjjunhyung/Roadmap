@@ -20,7 +20,7 @@ use axum::{
     extract::{Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::get,
 };
 use serde::Serialize;
@@ -51,6 +51,36 @@ pub struct AppState {
     /// Shared with CloudFront (X-Origin-Verify): requests carrying it may name the real
     /// client in CloudFront-Viewer-Address.
     pub origin_secret: Option<Arc<str>>,
+    /// CloudFront's way in (origin.<domain>): only requests carrying origin_secret may use it.
+    pub origin_host: Option<Arc<str>>,
+}
+
+/// Requests for the origin hostname must come from CloudFront, which adds the shared secret;
+/// anyone calling it directly is turned away. Other hostnames (the public ones, should the front
+/// door ever move back to Cloudflare) are not affected.
+async fn only_through_cloudfront(State(st): State<AppState>, req: Request, next: Next) -> Response {
+    if let (Some(host), Some(secret)) = (st.origin_host.as_deref(), st.origin_secret.as_deref()) {
+        let asked = req
+            .headers()
+            .get(header::HOST)
+            .and_then(|v| v.to_str().ok())
+            .or_else(|| req.uri().host())
+            .map(|h| h.split(':').next().unwrap_or(h));
+        let from_cloudfront = req
+            .headers()
+            .get("x-origin-verify")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| plan::constant_time_eq(v.as_bytes(), secret.as_bytes()));
+        if asked.is_some_and(|h| h.eq_ignore_ascii_case(host)) && !from_cloudfront {
+            return (
+                StatusCode::FORBIDDEN,
+                [(header::CACHE_CONTROL, "no-store")],
+                "Forbidden",
+            )
+                .into_response();
+        }
+    }
+    next.run(req).await
 }
 
 /// The visitor's IP. Requests from CloudFront (they carry the shared secret) name it in
@@ -142,6 +172,10 @@ pub fn router(state: AppState, static_dir: Option<&Path>) -> Router {
             .fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))));
     }
     app.layer(middleware::from_fn(cache_static))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            only_through_cloudfront,
+        ))
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .with_state(state)

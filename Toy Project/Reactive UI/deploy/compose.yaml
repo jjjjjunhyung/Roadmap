@@ -24,6 +24,9 @@ services:
       # Shared with CloudFront (infra output origin_secret): marks requests whose
       # CloudFront-Viewer-Address names the real visitor
       ORIGIN_SECRET: ${ORIGIN_SECRET:-}
+      # CloudFront's way in (infra output origin_hostname): requests for it without the secret
+      # are refused
+      ORIGIN_HOST: ${ORIGIN_HOST:-}
     volumes:
       - /data/reactive-ui:/data # SQLite database lives on the block volume
     stop_grace_period: 10s

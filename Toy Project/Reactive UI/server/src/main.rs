@@ -118,7 +118,15 @@ async fn main() -> anyhow::Result<()> {
             .map(|v| v.trim().to_owned())
             .filter(|v| v.len() >= 16)
             .map(Into::into),
+        origin_host: env::var("ORIGIN_HOST")
+            .ok()
+            .map(|v| v.trim().to_ascii_lowercase())
+            .filter(|v| !v.is_empty())
+            .map(Into::into),
     };
+    if state.origin_host.is_some() && state.origin_secret.is_none() {
+        tracing::warn!("ORIGIN_HOST without ORIGIN_SECRET: direct access to it is not blocked");
+    }
     if let Some(b) = backup {
         backup::spawn(state.db.clone(), b);
     }

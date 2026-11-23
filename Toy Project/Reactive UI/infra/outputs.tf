@@ -66,3 +66,8 @@ output "origin_secret" {
   value       = random_password.origin_secret.result
   sensitive   = true
 }
+
+output "origin_hostname" {
+  description = "Goes into ORIGIN_HOST in the VM's .env: CloudFront's way in, closed to anyone else"
+  value       = local.origin_hostname
+}

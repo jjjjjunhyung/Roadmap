@@ -25,6 +25,7 @@ async fn app(key: Option<&str>) -> Router {
             archive: key.and_then(|k| Archive::new(BIRTHDAY, k)).map(Into::into),
             backup: None,
             origin_secret: None,
+            origin_host: None,
         },
         None,
     )
@@ -1182,6 +1183,7 @@ async fn static_files_carry_cache_rules() {
             archive: None,
             backup: None,
             origin_secret: None,
+            origin_host: None,
         },
         Some(&dir),
     );
@@ -1215,4 +1217,51 @@ async fn static_files_carry_cache_rules() {
     let (_, cc) = get("/api/health").await;
     assert_eq!(cc, None);
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// origin.<domain> answers only requests that carry CloudFront's secret; the public hostnames
+/// are untouched (so a switch back to Cloudflare keeps working).
+#[tokio::test]
+async fn origin_hostname_needs_cloudfronts_secret() {
+    let db = open_database("sqlite::memory:").await.unwrap();
+    let app = router(
+        AppState {
+            db,
+            revision: "test".into(),
+            planner_key: None,
+            naver_map_client_id: None,
+            archive: None,
+            backup: None,
+            origin_secret: Some("cloudfront-shared-secret".into()),
+            origin_host: Some("origin.example.com".into()),
+        },
+        None,
+    );
+    let get = |host: &'static str, secret: Option<&'static str>| {
+        let app = app.clone();
+        async move {
+            let mut req = Request::builder().uri("/api/health").header("host", host);
+            if let Some(s) = secret {
+                req = req.header("x-origin-verify", s);
+            }
+            app.oneshot(req.body(Body::empty()).unwrap())
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+    assert_eq!(get("origin.example.com", None).await, StatusCode::FORBIDDEN);
+    assert_eq!(
+        get("ORIGIN.example.com:443", Some("wrong")).await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        get("origin.example.com", Some("cloudfront-shared-secret")).await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        get("example.com", None).await,
+        StatusCode::OK,
+        "public hostname untouched"
+    );
 }
