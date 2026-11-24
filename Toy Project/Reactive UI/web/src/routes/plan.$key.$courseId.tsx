@@ -116,7 +116,8 @@ function Editor() {
   const c = q.data;
   const d = formatDate(c.date);
   const shareUrl = `${location.origin}/p/${c.share_code}`;
-  const anyPicked = c.steps.some((s) => s.picked_id);
+  // her picks (the planner's fixed steps come back by themselves after a reset)
+  const anyPicked = c.steps.some((s) => s.picked_by === "picker");
   const move = (i: number, dir: -1 | 1) => {
     const ids = c.steps.map((s) => s.id);
     [ids[i], ids[i + dir]] = [ids[i + dir], ids[i]];
@@ -173,8 +174,8 @@ function Editor() {
         {c.status === "draft" ? (
           <>
             <p>
-              <b>준비 중</b> · 아직 링크가 열리지 않았어. 단계마다 후보를 두 개 이상 넣고 공유를
-              시작해 줘.
+              <b>준비 중</b> · 아직 링크가 열리지 않았어. 단계마다 후보를 넣고 공유를 시작해 줘.
+              후보가 하나면 정해 둔 곳으로 처음부터 보이고, 둘 이상이면 게임으로 골라.
             </p>
             <div className="btns">
               <button
@@ -191,7 +192,7 @@ function Editor() {
               <b>{c.status === "done" ? "완성" : "공유 중"}</b> ·{" "}
               {c.status === "done"
                 ? "모든 단계를 골랐어."
-                : "이 링크로 들어오면 단계마다 하나씩 고를 수 있어."}
+                : "이 링크로 들어오면 하루 일정이 먼저 보이고, 안 정해진 곳만 원하는 순서로 골라."}
             </p>
             <div className="link">
               <code>{shareUrl}</code>
@@ -285,6 +286,8 @@ function StepEditor(props: {
   const save = (body: StepInput) => run(api.updateStep(step.id, body));
   const picked = step.candidates.find((c) => c.id === step.picked_id);
   const game = GAMES[step.game];
+  // one candidate: the planner's decision, shown from the start with no game
+  const fixed = step.candidates.length === 1;
   return (
     <article className="pstep">
       <div className="pstep-head">
@@ -360,42 +363,52 @@ function StepEditor(props: {
           onBlur={onBlurSave(step.title, (title) => save({ title }))}
         />
       </label>
-      <div className="row2">
-        <label className="field">
-          <span>고르는 게임</span>
-          <select
-            className="select"
-            value={step.game}
-            onChange={(e) => void save({ game: e.target.value as GameId })}
-          >
-            {Object.entries(GAMES).map(([id, g]) => (
-              <option key={id} value={id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {game?.luck ? (
+      {fixed ? (
+        <p className="game-desc fixed-desc">
+          <b>정해 둔 곳</b> · 후보가 하나라 게임 없이 처음부터 보여. 후보를 더 넣으면 게임으로 골라.
+        </p>
+      ) : (
+        <div className="row2">
           <label className="field">
-            <span>다시 하기</span>
+            <span>고르는 게임</span>
             <select
               className="select"
-              value={step.rerolls}
-              onChange={(e) => void save({ rerolls: Number(e.target.value) })}
+              value={step.game}
+              onChange={(e) => void save({ game: e.target.value as GameId })}
             >
-              {[0, 1, 2, 3].map((r) => (
-                <option key={r} value={r}>
-                  {r}번
+              {Object.entries(GAMES).map(([id, g]) => (
+                <option key={id} value={id}>
+                  {g.name}
                 </option>
               ))}
             </select>
           </label>
-        ) : (
-          <span />
-        )}
-      </div>
-      {game && <p className="game-desc">{game.desc}</p>}
-      {picked && <p className="picked">골랐어 · {picked.name}</p>}
+          {game?.luck ? (
+            <label className="field">
+              <span>다시 하기</span>
+              <select
+                className="select"
+                value={step.rerolls}
+                onChange={(e) => void save({ rerolls: Number(e.target.value) })}
+              >
+                {[0, 1, 2, 3].map((r) => (
+                  <option key={r} value={r}>
+                    {r}번
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <span />
+          )}
+        </div>
+      )}
+      {!fixed && game && <p className="game-desc">{game.desc}</p>}
+      {picked && (
+        <p className="picked">
+          {step.picked_by === "planner" ? "정해 둠" : "골랐어"} · {picked.name}
+        </p>
+      )}
       <ul className="cands">
         {step.candidates.map((c, i) => (
           <CandidateRow

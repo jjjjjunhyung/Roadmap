@@ -170,7 +170,7 @@ async fn new_course_gets_template_and_validates_input() {
 }
 
 #[tokio::test]
-async fn cannot_open_until_every_step_has_two_candidates() {
+async fn cannot_open_until_every_step_has_a_candidate() {
     let app = app(Some(KEY)).await;
     let c = plan(
         &app,
@@ -193,7 +193,7 @@ async fn cannot_open_until_every_step_has_two_candidates() {
 }
 
 #[tokio::test]
-async fn picker_sees_one_step_at_a_time_and_completes() {
+async fn picker_sees_the_whole_day_and_chooses_in_any_order() {
     let app = app(Some(KEY)).await;
     let c = seeded(&app).await;
     let (id, code) = (c["id"].as_str().unwrap(), c["share_code"].as_str().unwrap());
@@ -206,7 +206,7 @@ async fn picker_sees_one_step_at_a_time_and_completes() {
     let (s, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(v["status"], "draft");
-    assert!(v["current"].is_null() && v["steps"].as_array().unwrap().is_empty());
+    assert!(v["open"].as_array().unwrap().is_empty() && v["steps"].as_array().unwrap().is_empty());
 
     plan(
         &app,
@@ -216,30 +216,21 @@ async fn picker_sees_one_step_at_a_time_and_completes() {
     )
     .await;
     let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
-    assert_eq!(v["current"]["id"], s0);
-    assert_eq!(v["current"]["candidates"].as_array().unwrap().len(), 3);
-    assert_eq!(v["steps"][1]["state"], "locked");
-    let body = v.to_string();
-    assert!(
-        !body.contains("장소1-"),
-        "later candidates must not be sent: {body}"
+    assert_eq!(v["steps"][0]["state"], "open");
+    assert_eq!(v["steps"][1]["state"], "open");
+    let open = v["open"].as_array().unwrap();
+    assert_eq!(
+        (open.len(), open[0]["id"].as_str(), open[1]["id"].as_str()),
+        (2, Some(s0), Some(s1))
     );
+    assert_eq!(open[1]["candidates"].as_array().unwrap().len(), 3);
 
-    // out of order / wrong candidate
-    let other = c["steps"][1]["candidates"][0]["id"].as_str().unwrap();
+    // wrong candidate for the step
+    let other = c["steps"][0]["candidates"][0]["id"].as_str().unwrap();
     let (s, _) = call(
         &app,
         Method::POST,
         &format!("/api/pick/{code}/steps/{s1}/pick"),
-        Some(json!({ "candidate_id": other })),
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::CONFLICT);
-    let (s, _) = call(
-        &app,
-        Method::POST,
-        &format!("/api/pick/{code}/steps/{s0}/pick"),
         Some(json!({ "candidate_id": other })),
         None,
     )
@@ -256,23 +247,7 @@ async fn picker_sees_one_step_at_a_time_and_completes() {
     .await;
     assert_eq!(s, StatusCode::CONFLICT);
 
-    let first = c["steps"][0]["candidates"][1]["id"].as_str().unwrap();
-    let (s, v) = call(
-        &app,
-        Method::POST,
-        &format!("/api/pick/{code}/steps/{s0}/pick"),
-        Some(json!({ "candidate_id": first })),
-        None,
-    )
-    .await;
-    assert_eq!(s, StatusCode::OK);
-    assert_eq!(v["steps"][0]["state"], "done");
-    assert_eq!(v["steps"][0]["picked"]["name"], "장소0-2");
-    assert_eq!(v["current"]["id"], s1);
-    assert_eq!(v["current"]["game"], "roulette");
-    assert_eq!(v["current"]["rerolls_left"], 1);
-
-    // roulette: one reroll, then none
+    // the second step first: roulette, one reroll, then none
     let (s, v) = call(
         &app,
         Method::POST,
@@ -291,9 +266,8 @@ async fn picker_sees_one_step_at_a_time_and_completes() {
     )
     .await;
     assert_eq!(s, StatusCode::CONFLICT);
-
     let last = c["steps"][1]["candidates"][2]["id"].as_str().unwrap();
-    let (_, v) = call(
+    let (s, v) = call(
         &app,
         Method::POST,
         &format!("/api/pick/{code}/steps/{s1}/pick"),
@@ -301,8 +275,36 @@ async fn picker_sees_one_step_at_a_time_and_completes() {
         None,
     )
     .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["status"], "open");
+    assert_eq!(v["steps"][1]["state"], "done");
+    assert_eq!(v["steps"][1]["picked"]["name"], "장소1-3");
+    assert_eq!(v["open"].as_array().unwrap().len(), 1);
+    assert_eq!(v["open"][0]["id"], s0);
+
+    // a decided step cannot be chosen again
+    let (s, _) = call(
+        &app,
+        Method::POST,
+        &format!("/api/pick/{code}/steps/{s1}/pick"),
+        Some(json!({ "candidate_id": last })),
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::CONFLICT);
+
+    let first = c["steps"][0]["candidates"][1]["id"].as_str().unwrap();
+    let (_, v) = call(
+        &app,
+        Method::POST,
+        &format!("/api/pick/{code}/steps/{s0}/pick"),
+        Some(json!({ "candidate_id": first })),
+        None,
+    )
+    .await;
     assert_eq!(v["status"], "done");
-    assert!(v["current"].is_null());
+    assert!(v["open"].as_array().unwrap().is_empty());
+    assert_eq!(v["steps"][0]["picked"]["name"], "장소0-2");
 
     // planner can reset; history recorded both sides
     let c = plan(&app, Method::POST, &format!("/courses/{id}/reset"), None).await;
@@ -319,6 +321,138 @@ async fn picker_sees_one_step_at_a_time_and_completes() {
             && actions.contains(&"reroll")
             && actions.contains(&"course.reset")
     );
+}
+
+/// A step with a single candidate is the planner's decision ("정해 둠"): shown from the start,
+/// never played, and a game again as soon as it gets a second candidate.
+#[tokio::test]
+async fn single_candidate_steps_are_fixed() {
+    let app = app(Some(KEY)).await;
+    let mut c = seeded(&app).await;
+    let (id, code) = (
+        c["id"].as_str().unwrap().to_string(),
+        c["share_code"].as_str().unwrap().to_string(),
+    );
+    let (s0, s1) = (
+        c["steps"][0]["id"].as_str().unwrap().to_string(),
+        c["steps"][1]["id"].as_str().unwrap().to_string(),
+    );
+    for i in [2, 1] {
+        let cid = c["steps"][1]["candidates"][i]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        c = plan(&app, Method::DELETE, &format!("/candidates/{cid}"), None).await;
+    }
+    assert!(
+        c["steps"][1]["picked_id"].is_null(),
+        "drafts are not settled"
+    );
+
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/courses/{id}"),
+        Some(json!({ "status": "open" })),
+    )
+    .await;
+    assert_eq!(c["status"], "open");
+    assert_eq!(c["steps"][1]["picked_by"], "planner");
+    let view = || async {
+        call(&app, Method::GET, &format!("/api/pick/{code}"), None, None)
+            .await
+            .1
+    };
+    let v = view().await;
+    assert_eq!(v["steps"][1]["state"], "fixed");
+    assert_eq!(v["steps"][1]["picked"]["name"], "장소1-1");
+    assert_eq!(v["open"].as_array().unwrap().len(), 1);
+    assert_eq!(v["open"][0]["id"], s0.as_str());
+
+    // a fixed step is not played
+    let only = c["steps"][1]["candidates"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let (s, _) = call(
+        &app,
+        Method::POST,
+        &format!("/api/pick/{code}/steps/{s1}/pick"),
+        Some(json!({ "candidate_id": only })),
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::CONFLICT);
+
+    // choosing the other step completes the course
+    let pick0 = c["steps"][0]["candidates"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let (_, v) = call(
+        &app,
+        Method::POST,
+        &format!("/api/pick/{code}/steps/{s0}/pick"),
+        Some(json!({ "candidate_id": pick0 })),
+        None,
+    )
+    .await;
+    assert_eq!(v["status"], "done");
+
+    // a second candidate makes it a game again, and the course is open once more
+    let c = plan(
+        &app,
+        Method::POST,
+        &format!("/steps/{s1}/candidates"),
+        Some(json!({ "name": "장소1-9", "map_url": "https://map.kakao.com/?q=x" })),
+    )
+    .await;
+    assert_eq!(c["status"], "open");
+    assert!(c["steps"][1]["picked_id"].is_null());
+    let v = view().await;
+    assert_eq!(v["steps"][1]["state"], "open");
+    assert_eq!(v["steps"][0]["state"], "done", "her own pick stays");
+
+    // removing it again fixes the step and completes the course
+    let extra = c["steps"][1]["candidates"][1]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let c = plan(&app, Method::DELETE, &format!("/candidates/{extra}"), None).await;
+    assert_eq!(
+        (c["status"].as_str(), c["steps"][1]["picked_by"].as_str()),
+        (Some("done"), Some("planner"))
+    );
+
+    // reset clears her picks but not the planner's
+    let c = plan(&app, Method::POST, &format!("/courses/{id}/reset"), None).await;
+    assert_eq!(c["status"], "open");
+    assert!(c["steps"][0]["picked_id"].is_null());
+    assert_eq!(c["steps"][1]["picked_by"], "planner");
+
+    // every step fixed: done the moment it is shared
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/courses/{id}"),
+        Some(json!({ "status": "draft" })),
+    )
+    .await;
+    for i in [2, 1] {
+        let cid = c["steps"][0]["candidates"][i]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        plan(&app, Method::DELETE, &format!("/candidates/{cid}"), None).await;
+    }
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/courses/{id}"),
+        Some(json!({ "status": "open" })),
+    )
+    .await;
+    assert_eq!(c["status"], "done");
 }
 
 #[tokio::test]
@@ -379,7 +513,7 @@ async fn candidate_photos_are_stored_shown_and_cleared() {
     .await;
     let code = c["share_code"].as_str().unwrap();
     let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
-    assert_eq!(v["current"]["candidates"][0]["image_url"], photo);
+    assert_eq!(v["open"][0]["candidates"][0]["image_url"], photo);
 
     // a different place drops the old photo (a non-Naver link has none to offer)
     let c = plan(
@@ -441,7 +575,7 @@ async fn config_and_locations_reach_the_picker() {
     .await;
     let code = c["share_code"].as_str().unwrap();
     let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
-    let first = &v["current"]["candidates"][0];
+    let first = &v["open"][0]["candidates"][0];
     assert!(first.get("lat").is_some() && first["lat"].is_null());
 }
 

@@ -1,5 +1,6 @@
-//! Picker API (/api/pick/{code}): the shared link. Only the current step's
-//! candidates ever leave the server, so later steps stay a surprise.
+//! Picker API (/api/pick/{code}): the shared link. The whole day is shown up front: steps the
+//! planner fixed (a single candidate) with their place, and the steps still to choose, which the
+//! picker plays in any order she likes.
 
 use axum::{
     Json, Router,
@@ -70,13 +71,13 @@ pub struct StepSummary {
     kind: String,
     label: String,
     time: String,
-    /// "done" | "current" | "locked"
+    /// "fixed" (the planner decided) | "done" (chosen in a game) | "open" (still to choose)
     state: &'static str,
     picked: Option<Place>,
 }
 
 #[derive(Serialize)]
-pub struct CurrentStep {
+pub struct OpenStep {
     id: String,
     kind: String,
     label: String,
@@ -94,7 +95,8 @@ pub struct PickView {
     /// "draft" (not shared yet) | "open" | "done"
     status: String,
     steps: Vec<StepSummary>,
-    current: Option<CurrentStep>,
+    /// the steps still to choose, with their games and candidates, in course order
+    open: Vec<OpenStep>,
 }
 
 async fn build(conn: &mut SqliteConnection, code: &str) -> Result<PickView> {
@@ -105,28 +107,24 @@ async fn build(conn: &mut SqliteConnection, code: &str) -> Result<PickView> {
             date: course.date,
             status: course.status,
             steps: vec![],
-            current: None,
+            open: vec![],
         });
     }
     let steps = model::steps(conn, &course.id).await?;
     let cands = model::candidates(conn, &course.id).await?;
-    let current_idx = steps.iter().position(|s| s.picked_id.is_none());
 
     let summaries = steps
         .iter()
-        .enumerate()
-        .map(|(i, s)| {
+        .map(|s| {
             let picked = s
                 .picked_id
                 .as_ref()
                 .and_then(|pid| cands.iter().find(|c| &c.id == pid))
                 .map(Place::from);
-            let state = if picked.is_some() {
-                "done"
-            } else if Some(i) == current_idx {
-                "current"
-            } else {
-                "locked"
+            let state = match (&picked, s.picked_by.as_deref()) {
+                (None, _) => "open",
+                (Some(_), Some("planner")) => "fixed",
+                (Some(_), _) => "done",
             };
             StepSummary {
                 id: s.id.clone(),
@@ -139,34 +137,37 @@ async fn build(conn: &mut SqliteConnection, code: &str) -> Result<PickView> {
         })
         .collect();
 
-    let current = current_idx.map(|i| {
-        let s = &steps[i];
-        let luck = validate::LUCK_GAMES.contains(&s.game.as_str());
-        CurrentStep {
-            id: s.id.clone(),
-            kind: s.kind.clone(),
-            label: s.label.clone(),
-            title: s.title.clone(),
-            time: s.time.clone(),
-            game: s.game.clone(),
-            rerolls_left: if luck {
-                (s.rerolls - s.rerolls_used).max(0)
-            } else {
-                0
-            },
-            candidates: cands
-                .iter()
-                .filter(|c| c.step_id == s.id)
-                .map(Place::from)
-                .collect(),
-        }
-    });
+    let open = steps
+        .iter()
+        .filter(|s| s.picked_id.is_none())
+        .map(|s| {
+            let luck = validate::LUCK_GAMES.contains(&s.game.as_str());
+            OpenStep {
+                id: s.id.clone(),
+                kind: s.kind.clone(),
+                label: s.label.clone(),
+                title: s.title.clone(),
+                time: s.time.clone(),
+                game: s.game.clone(),
+                rerolls_left: if luck {
+                    (s.rerolls - s.rerolls_used).max(0)
+                } else {
+                    0
+                },
+                candidates: cands
+                    .iter()
+                    .filter(|c| c.step_id == s.id)
+                    .map(Place::from)
+                    .collect(),
+            }
+        })
+        .collect();
     Ok(PickView {
         title: course.title,
         date: course.date,
         status: course.status,
         steps: summaries,
-        current,
+        open,
     })
 }
 
@@ -175,8 +176,9 @@ async fn view(State(st): State<AppState>, Path(code): Path<String>) -> Result<Js
     Ok(Json(build(&mut conn, &code).await?))
 }
 
-/// The step must be the current one; returns (course_id, step) on success.
-async fn current_step(
+/// The step must belong to this shared course and still be open (any order is fine); returns
+/// (course_id, step) on success.
+async fn open_step(
     conn: &mut SqliteConnection,
     code: &str,
     step_id: &str,
@@ -187,15 +189,17 @@ async fn current_step(
         "done" => return Err(conflict("이미 코스가 완성됐어")),
         _ => {}
     }
-    let steps = model::steps(conn, &course.id).await?;
-    let cur = steps
+    let step = model::steps(conn, &course.id)
+        .await?
         .into_iter()
-        .find(|s| s.picked_id.is_none())
-        .ok_or_else(|| conflict("이미 코스가 완성됐어"))?;
-    if cur.id != step_id {
-        return Err(conflict("지금 고를 차례가 아니야. 화면을 새로 고쳐 줘"));
+        .find(|s| s.id == step_id)
+        .ok_or(AppError::NotFound(
+            "단계를 찾을 수 없어. 화면을 새로 고쳐 줘",
+        ))?;
+    if step.picked_id.is_some() {
+        return Err(conflict("이미 정해진 단계야. 화면을 새로 고쳐 줘"));
     }
-    Ok((course.id, cur))
+    Ok((course.id, step))
 }
 
 #[derive(Deserialize)]
@@ -209,26 +213,21 @@ async fn pick(
     Json(b): Json<PickBody>,
 ) -> Result<Json<PickView>> {
     let mut tx = st.db.begin().await?;
-    let (course_id, step) = current_step(&mut tx, &code, &step_id).await?;
+    let (course_id, step) = open_step(&mut tx, &code, &step_id).await?;
     let (_, owner_step) = model::candidate_owner(&mut tx, &b.candidate_id).await?;
     if owner_step != step.id {
         return Err(AppError::BadRequest("이 단계의 후보가 아니야".into()));
     }
-    sqlx::query("UPDATE steps SET picked_id = ?, picked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?")
-        .bind(&b.candidate_id)
-        .bind(&step.id)
-        .execute(&mut *tx)
-        .await?;
-    let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM steps WHERE course_id = ? AND deleted_at IS NULL AND picked_id IS NULL")
-        .bind(&course_id)
-        .fetch_one(&mut *tx)
-        .await?;
-    if remaining == 0 {
-        sqlx::query("UPDATE courses SET status = 'done' WHERE id = ?")
-            .bind(&course_id)
-            .execute(&mut *tx)
-            .await?;
-    }
+    sqlx::query(
+        "UPDATE steps SET picked_id = ?, picked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), \
+         picked_by = 'picker' WHERE id = ?",
+    )
+    .bind(&b.candidate_id)
+    .bind(&step.id)
+    .execute(&mut *tx)
+    .await?;
+    // done once nothing is left to choose
+    model::settle(&mut tx, &course_id).await?;
     model::log(
         &mut tx,
         &course_id,
@@ -252,7 +251,7 @@ async fn reroll(
     Path((code, step_id)): Path<(String, String)>,
 ) -> Result<Json<RerollLeft>> {
     let mut tx = st.db.begin().await?;
-    let (course_id, step) = current_step(&mut tx, &code, &step_id).await?;
+    let (course_id, step) = open_step(&mut tx, &code, &step_id).await?;
     if !validate::LUCK_GAMES.contains(&step.game.as_str()) || step.rerolls_used >= step.rerolls {
         return Err(conflict("다시 하기 기회를 다 썼어"));
     }

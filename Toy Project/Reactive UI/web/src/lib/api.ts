@@ -29,11 +29,12 @@ export interface StepSummary {
   kind: Kind;
   label: string;
   time: string;
-  state: "done" | "current" | "locked";
+  /** fixed: the planner decided (one candidate) · done: chosen in a game · open: still to choose */
+  state: "fixed" | "done" | "open";
   picked: Place | null;
 }
 
-export interface CurrentStep {
+export interface OpenStep {
   id: string;
   kind: Kind;
   label: string;
@@ -49,9 +50,8 @@ export interface PickView {
   date: string;
   status: CourseStatus;
   steps: StepSummary[];
-  current: CurrentStep | null;
-  /** client-only: a pick was sent and the next step is on its way */
-  pending?: boolean;
+  /** the steps still to choose, in course order; she plays them in any order */
+  open: OpenStep[];
 }
 
 export interface Candidate {
@@ -84,6 +84,8 @@ export interface Step {
   rerolls_used: number;
   picked_id: string | null;
   picked_at: string | null;
+  /** picker: chosen in a game · planner: a single candidate, so fixed ("정해 둠") */
+  picked_by: "picker" | "planner" | null;
   candidates: Candidate[];
 }
 

@@ -326,7 +326,7 @@ async fn to_candidate(
     .bind(&body.wish_id)
     .execute(&mut *tx)
     .await?;
-    model::touch(&mut tx, &course_id).await?;
+    model::changed(&mut tx, &course_id).await?;
     model::log(
         &mut tx,
         &course_id,

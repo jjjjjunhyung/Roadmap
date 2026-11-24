@@ -135,7 +135,13 @@ export function Masthead(props: { date: string; title: string; lede?: string; ho
 }
 
 /** Course strip; the step named in `morph` takes part in the shared-element transition. */
-export function Itinerary({ steps, morph }: { steps: StepSummary[]; morph: string | null }) {
+export function Itinerary(props: {
+  steps: StepSummary[];
+  morph: string | null;
+  /** the open step whose game is on screen */
+  playing?: string | null;
+}) {
+  const { steps, morph, playing = null } = props;
   // five or more steps share a phone's width, so the strip tightens and the words get shorter
   const many = steps.length > 4;
   return (
@@ -145,19 +151,19 @@ export function Itinerary({ steps, morph }: { steps: StepSummary[]; morph: strin
       aria-label="코스 진행 상황"
     >
       {steps.map((s) => (
-        <li key={s.id} data-state={s.state}>
+        <li key={s.id} data-state={s.state} data-playing={s.id === playing || undefined}>
           <span className="t">{s.time || "—"}</span>
           <span className="label">{s.label}</span>
           <span className="v" style={s.id === morph ? { viewTransitionName: "picked" } : undefined}>
-            {s.state === "done"
+            {s.state !== "open"
               ? s.picked?.name
-              : s.state === "current"
+              : s.id === playing
                 ? many
                   ? "지금"
                   : "고르는 중"
                 : many
-                  ? "비밀"
-                  : "아직 비밀"}
+                  ? "고르기"
+                  : "골라 줘"}
           </span>
         </li>
       ))}

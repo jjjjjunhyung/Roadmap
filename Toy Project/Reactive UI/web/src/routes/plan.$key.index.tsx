@@ -49,7 +49,8 @@ function CourseList() {
         <span className="label">Planner</span>
         <h2>데이트 준비</h2>
         <p className="lede">
-          날짜를 정하고 단계마다 후보를 넣어 줘. 링크를 보내면 상대가 게임으로 하나씩 골라.
+          날짜를 정하고 단계마다 후보를 넣어 줘. 후보가 하나면 정해 둔 곳, 여러 개면 링크를 받은
+          상대가 게임으로 골라.
         </p>
       </header>
 

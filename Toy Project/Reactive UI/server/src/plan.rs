@@ -198,18 +198,15 @@ async fn update(
                 if full.steps.is_empty() {
                     return Err(bad("단계를 하나 이상 만들어 줘"));
                 }
-                if let Some(s) = full.steps.iter().find(|s| s.candidates.len() < 2) {
+                // one candidate: fixed ("정해 둠"); two or more: a game
+                if let Some(s) = full.steps.iter().find(|s| s.candidates.is_empty()) {
                     return Err(bad(format!(
-                        "'{}' 단계에 후보를 두 개 이상 넣어 줘",
+                        "'{}' 단계에 후보를 하나 이상 넣어 줘",
                         s.step.label
                     )));
                 }
-                let all_picked = full.steps.iter().all(|s| s.step.picked_id.is_some());
-                status = if all_picked {
-                    "done".into()
-                } else {
-                    "open".into()
-                };
+                // fixed steps and done-ness are settled below
+                status = "open".into();
             }
             _ => return Err(bad("상태 값이 올바르지 않아")),
         }
@@ -221,7 +218,7 @@ async fn update(
         .bind(&id)
         .execute(&mut *tx)
         .await?;
-    model::touch(&mut tx, &id).await?;
+    model::changed(&mut tx, &id).await?;
     model::log(
         &mut tx,
         &id,
@@ -253,7 +250,7 @@ async fn reset(State(st): State<AppState>, Path(id): Path<String>) -> Result<Jso
     let mut tx = st.db.begin().await?;
     let cur = model::course(&mut tx, &id).await?;
     sqlx::query(
-        "UPDATE steps SET picked_id = NULL, picked_at = NULL, rerolls_used = 0 WHERE course_id = ?",
+        "UPDATE steps SET picked_id = NULL, picked_at = NULL, picked_by = NULL, rerolls_used = 0 WHERE course_id = ?",
     )
     .bind(&id)
     .execute(&mut *tx)
@@ -264,7 +261,8 @@ async fn reset(State(st): State<AppState>, Path(id): Path<String>) -> Result<Jso
             .execute(&mut *tx)
             .await?;
     }
-    model::touch(&mut tx, &id).await?;
+    // fixed steps are picked again right away (model::changed below)
+    model::changed(&mut tx, &id).await?;
     model::log(&mut tx, &id, "planner", "course.reset", json!({})).await?;
     let full = model::full(&mut tx, &id).await?;
     tx.commit().await?;
@@ -379,7 +377,7 @@ async fn add_step(
         .bind(vals.rerolls)
         .execute(&mut *tx)
         .await?;
-    model::touch(&mut tx, &id).await?;
+    model::changed(&mut tx, &id).await?;
     model::log(
         &mut tx,
         &id,
@@ -426,7 +424,7 @@ async fn update_step(
         .bind(&step_id)
         .execute(&mut *tx)
         .await?;
-    model::touch(&mut tx, &course_id).await?;
+    model::changed(&mut tx, &course_id).await?;
     model::log(
         &mut tx,
         &course_id,
@@ -450,7 +448,7 @@ async fn remove_step(
         .bind(&step_id)
         .execute(&mut *tx)
         .await?;
-    model::touch(&mut tx, &course_id).await?;
+    model::changed(&mut tx, &course_id).await?;
     model::log(
         &mut tx,
         &course_id,
@@ -490,7 +488,7 @@ async fn order_steps(
             .execute(&mut *tx)
             .await?;
     }
-    model::touch(&mut tx, &id).await?;
+    model::changed(&mut tx, &id).await?;
     model::log(
         &mut tx,
         &id,
@@ -561,7 +559,7 @@ async fn add_candidate(
     .bind(lng)
     .execute(&mut *tx)
     .await?;
-    model::touch(&mut tx, &course_id).await?;
+    model::changed(&mut tx, &course_id).await?;
     model::log(
         &mut tx,
         &course_id,
@@ -640,7 +638,7 @@ async fn update_candidate(
     .bind(&cand_id)
     .execute(&mut *tx)
     .await?;
-    model::touch(&mut tx, &course_id).await?;
+    model::changed(&mut tx, &course_id).await?;
     model::log(
         &mut tx,
         &course_id,
@@ -684,13 +682,13 @@ async fn remove_candidate(
     .await?;
     // A removed candidate can no longer be the answer.
     sqlx::query(
-        "UPDATE steps SET picked_id = NULL, picked_at = NULL WHERE id = ? AND picked_id = ?",
+        "UPDATE steps SET picked_id = NULL, picked_at = NULL, picked_by = NULL WHERE id = ? AND picked_id = ?",
     )
     .bind(&step_id)
     .bind(&cand_id)
     .execute(&mut *tx)
     .await?;
-    model::touch(&mut tx, &course_id).await?;
+    model::changed(&mut tx, &course_id).await?;
     model::log(
         &mut tx,
         &course_id,

@@ -30,6 +30,8 @@ pub struct Step {
     pub rerolls_used: i64,
     pub picked_id: Option<String>,
     pub picked_at: Option<String>,
+    /// "picker" (chosen in a game) or "planner" (a single candidate: fixed)
+    pub picked_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, FromRow)]
@@ -69,7 +71,7 @@ macro_rules! course_cols {
 }
 macro_rules! step_cols {
     () => {
-        "id, position, kind, label, title, time, game, rerolls, rerolls_used, picked_id, picked_at"
+        "id, position, kind, label, title, time, game, rerolls, rerolls_used, picked_id, picked_at, picked_by"
     };
 }
 macro_rules! cand_cols {
@@ -168,6 +170,57 @@ pub async fn candidate_owner(
     .fetch_optional(&mut *conn)
     .await?
     .ok_or(AppError::NotFound("후보를 찾을 수 없어"))
+}
+
+/// After any change to a course: bump updated_at, then settle which steps are fixed.
+pub async fn changed(conn: &mut SqliteConnection, course_id: &str) -> Result<()> {
+    touch(conn, course_id).await?;
+    settle(conn, course_id).await
+}
+
+/// A step with exactly one candidate is decided by the planner ("정해 둠"): once the course is
+/// shared it counts as picked, and one that gains a second candidate becomes a game again. The
+/// course is then done when every step is decided, open otherwise. Drafts are left alone.
+pub async fn settle(conn: &mut SqliteConnection, course_id: &str) -> Result<()> {
+    let status: String = sqlx::query_scalar("SELECT status FROM courses WHERE id = ?")
+        .bind(course_id)
+        .fetch_one(&mut *conn)
+        .await?;
+    if status == "draft" {
+        return Ok(());
+    }
+    // undo planner picks that no longer hold (more than one candidate, or its candidate is gone)
+    sqlx::query(
+        "UPDATE steps SET picked_id = NULL, picked_at = NULL, picked_by = NULL \
+         WHERE course_id = ?1 AND deleted_at IS NULL AND picked_by = 'planner' AND ( \
+           (SELECT count(*) FROM candidates c WHERE c.step_id = steps.id AND c.deleted_at IS NULL) != 1 \
+           OR NOT EXISTS (SELECT 1 FROM candidates c WHERE c.id = steps.picked_id AND c.deleted_at IS NULL))",
+    )
+    .bind(course_id)
+    .execute(&mut *conn)
+    .await?;
+    sqlx::query(
+        "UPDATE steps SET \
+           picked_id = (SELECT c.id FROM candidates c WHERE c.step_id = steps.id AND c.deleted_at IS NULL), \
+           picked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), picked_by = 'planner' \
+         WHERE course_id = ?1 AND deleted_at IS NULL AND picked_id IS NULL \
+           AND (SELECT count(*) FROM candidates c WHERE c.step_id = steps.id AND c.deleted_at IS NULL) = 1",
+    )
+    .bind(course_id)
+    .execute(&mut *conn)
+    .await?;
+    let open: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM steps WHERE course_id = ? AND deleted_at IS NULL AND picked_id IS NULL",
+    )
+    .bind(course_id)
+    .fetch_one(&mut *conn)
+    .await?;
+    sqlx::query("UPDATE courses SET status = ? WHERE id = ?")
+        .bind(if open > 0 { "open" } else { "done" })
+        .bind(course_id)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
 }
 
 pub async fn touch(conn: &mut SqliteConnection, course_id: &str) -> Result<()> {
