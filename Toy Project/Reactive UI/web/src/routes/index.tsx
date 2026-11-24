@@ -12,6 +12,7 @@ import {
   pickApi,
   wishApi,
 } from "../lib/api";
+import { Envelope, type EnvelopeHandle } from "../components/Envelope";
 import { useTurnstile } from "../components/Turnstile";
 import { WeatherIcon } from "../components/Weather";
 import { Wishlist } from "../components/Wishlist";
@@ -146,6 +147,8 @@ function Lock(props: { digits: number; siteKey: string | null; onOpen: (list: Me
   const human = useTurnstile(siteKey, humanBox);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const envelope = useRef<EnvelopeHandle>(null);
   const [miss, setMiss] = useState<{ n: number; text: string; wrong: boolean } | null>(null);
   const input = useRef<HTMLInputElement>(null);
   // after a miss the server makes this device wait; the countdown survives a reload
@@ -173,10 +176,13 @@ function Lock(props: { digits: number; siteKey: string | null; onOpen: (list: Me
       const list = await archiveApi.list();
       sfx.chime();
       haptic([12, 40, 24]);
+      setOpening(true);
+      await envelope.current?.open(list.map((m) => ({ date: m.date, title: m.title })));
       onOpen(list);
     } catch (e) {
       sfx.thud();
       haptic([30, 60, 30]);
+      envelope.current?.shake();
       setMiss((m) => ({
         n: (m?.n ?? 0) + 1,
         text: errorMessage(e),
@@ -197,7 +203,10 @@ function Lock(props: { digits: number; siteKey: string | null; onOpen: (list: Me
 
   const change = (raw: string) => {
     const next = raw.replace(/\D/g, "").slice(0, digits);
-    if (next.length > code.length) sfx.tick();
+    if (next.length > code.length) {
+      sfx.tick();
+      envelope.current?.hop();
+    }
     setCode(next);
     if (next.length === digits) void submit(next);
   };
@@ -214,6 +223,15 @@ function Lock(props: { digits: number; siteKey: string | null; onOpen: (list: Me
         <h1>생일을 눌러 줘</h1>
         <p className="lede">지금까지 함께 고른 데이트가 모두 여기 있어.</p>
       </header>
+
+      <Envelope
+        ref={envelope}
+        filled={code.length}
+        total={digits}
+        busy={busy}
+        waiting={waiting}
+        onPress={() => input.current?.focus()}
+      />
 
       <div
         key={miss?.n ?? 0}
@@ -256,15 +274,17 @@ function Lock(props: { digits: number; siteKey: string | null; onOpen: (list: Me
       </div>
 
       <p className={`hint pin-hint${miss ? " bad" : ""}`} role="status">
-        {busy
-          ? "확인하는 중…"
-          : waiting
-            ? `${miss?.wrong ? "아니야. " : ""}${mmss(until - now)} 뒤에 다시 할 수 있어`
-            : until === 0 && miss?.wrong
-              ? "이제 다시 눌러 줘"
-              : miss
-                ? miss.text
-                : `생일 ${SPOKEN[digits] ?? digits} 자리`}
+        {opening
+          ? "열렸어"
+          : busy
+            ? "확인하는 중…"
+            : waiting
+              ? `${miss?.wrong ? "아니야. " : ""}${mmss(until - now)} 뒤에 다시 할 수 있어`
+              : until === 0 && miss?.wrong
+                ? "이제 다시 눌러 줘"
+                : miss
+                  ? miss.text
+                  : `생일 ${SPOKEN[digits] ?? digits} 자리`}
       </p>
       {/* Cloudflare's check: empty unless it asks for a click */}
       <div className="ts-box" ref={humanBox} />

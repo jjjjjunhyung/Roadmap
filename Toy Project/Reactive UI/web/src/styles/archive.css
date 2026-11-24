@@ -88,6 +88,226 @@
 .pin.missed .pin-cell {
   border-bottom-color: color-mix(in srgb, var(--accent) 55%, var(--line));
 }
+/* the sealed envelope over the digits: its seal fills as they go in, the right birthday opens it */
+@property --seal {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+.envelope {
+  --env-front: var(--raise);
+  --env-flap: color-mix(in srgb, var(--raise) 94%, var(--ink));
+  --env-shadow: rgb(16 19 24 / 0.22);
+  position: relative;
+  height: clamp(190px, 27dvh, 240px);
+  margin: -10px 0 -14px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+@media (prefers-color-scheme: dark) {
+  .envelope {
+    --env-shadow: rgb(0 0 0 / 0.6);
+  }
+}
+.env-ground {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 84px);
+  width: 180px;
+  height: 18px;
+  margin-left: -90px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--env-shadow), transparent);
+  animation: env-ground 4.4s ease-in-out infinite;
+}
+.env-float {
+  animation: env-bob 4.4s ease-in-out infinite;
+}
+.envelope.waiting .env-float,
+.envelope.waiting .env-ground,
+.envelope.opened .env-float,
+.envelope.opened .env-ground {
+  animation-play-state: paused;
+}
+.env {
+  position: relative;
+  width: 232px;
+  height: 150px;
+  transform: perspective(800px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.env-back {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow:
+    inset 0 10px 18px -12px var(--env-shadow),
+    0 22px 34px -22px var(--env-shadow);
+}
+.env-flap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 86px;
+  z-index: 3;
+  transform-origin: 50% 0;
+  filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.08));
+}
+.env-flap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 12px 12px 0 0;
+  background: var(--env-flap);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.env-cards {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 9px;
+  height: 128px;
+  z-index: 1;
+}
+.env-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--raise);
+  box-shadow:
+    0 1px 0 rgb(0 0 0 / 0.04),
+    0 8px 16px -10px var(--env-shadow);
+}
+.env-card b {
+  font-size: 20px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.env-card span {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.env-card i {
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.env-card i + i {
+  width: 55%;
+}
+.env-front {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  filter: drop-shadow(0 -1px 1px rgb(0 0 0 / 0.07));
+}
+.env-front::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: var(--env-front);
+  clip-path: polygon(0 0, 50% 57%, 100% 0, 100% 100%, 0 100%);
+}
+.env-front svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.env-front path {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.env-seal {
+  position: absolute;
+  left: 50%;
+  top: 86px;
+  z-index: 4;
+  width: 48px;
+  height: 48px;
+  margin: -24px 0 0 -24px;
+  padding: 3px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--accent) calc(var(--seal) * 1turn),
+    color-mix(in srgb, var(--accent) 16%, transparent) 0
+  );
+  transition: --seal 0.35s ease;
+}
+.env-seal span {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(
+    circle at 35% 30%,
+    color-mix(in srgb, var(--accent) 72%, #ffffff),
+    var(--accent) 62%
+  );
+  box-shadow:
+    inset 0 -2px 4px rgb(0 0 0 / 0.25),
+    0 3px 8px -2px var(--env-shadow);
+  transition:
+    filter 0.3s,
+    opacity 0.3s;
+}
+.env-seal svg {
+  width: 18px;
+  height: 18px;
+  fill: #ffffff;
+  opacity: 0.92;
+}
+.envelope.busy .env-seal span {
+  animation: env-pulse 0.9s ease-in-out infinite alternate;
+}
+/* waiting out a miss: the seal goes grey until it may be tried again */
+.envelope.waiting .env-seal span {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+@keyframes env-bob {
+  50% {
+    transform: translateY(-9px);
+  }
+}
+@keyframes env-ground {
+  50% {
+    transform: scale(0.86);
+    opacity: 0.7;
+  }
+}
+@keyframes env-pulse {
+  to {
+    transform: scale(1.08);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .env-float,
+  .env-ground,
+  .envelope.busy .env-seal span {
+    animation: none;
+  }
+  .env {
+    transition: none;
+  }
+}
 /* the real input sits over the digits: it brings up the number pad and takes paste/autofill */
 .pin-input {
   position: absolute;
