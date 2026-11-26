@@ -14,7 +14,6 @@ import {
   type PhotoOption,
   type Step,
   type StepInput,
-  type Theme,
   errorMessage,
   planApi,
   type PlannerWish,
@@ -163,17 +162,6 @@ function Editor() {
               void run(api.update(c.id, { date: e.target.value }))
             }
           />
-        </label>
-        <label className="field">
-          <span>공유 화면 테마</span>
-          <select
-            className="select"
-            value={c.theme}
-            onChange={(e) => void run(api.update(c.id, { theme: e.target.value as Theme }))}
-          >
-            <option value="plain">기본</option>
-            <option value="holiday">연말 · 겨울밤, 눈, 꼬마전구</option>
-          </select>
         </label>
       </header>
       <WeatherStrip

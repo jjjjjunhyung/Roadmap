@@ -29,6 +29,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/courses/{id}/reset", post(reset))
         .route("/courses/{id}/history", get(history))
         .route("/courses/{id}/weather", get(course_weather))
+        .route("/theme", get(get_theme).put(set_theme))
         .route("/steps/{id}", patch(update_step).delete(remove_step))
         .route("/steps/{id}/candidates", post(add_candidate))
         .route("/candidates/{id}", patch(update_candidate))
@@ -171,8 +172,6 @@ struct CoursePatch {
     date: Option<String>,
     /// "draft" (hidden from the picker) or "open" (link works)
     status: Option<String>,
-    /// "plain" or "holiday" (the shared page in winter night, snow and string lights)
-    theme: Option<String>,
 }
 
 async fn update(
@@ -189,11 +188,6 @@ async fn update(
     let date = match &p.date {
         Some(d) => v::date(d)?,
         None => cur.date.clone(),
-    };
-    let theme = match p.theme.as_deref() {
-        Some(t @ ("plain" | "holiday")) => t.to_owned(),
-        Some(_) => return Err(bad("테마 값이 올바르지 않아")),
-        None => cur.theme.clone(),
     };
     let mut status = cur.status.clone();
     if let Some(s) = &p.status {
@@ -218,11 +212,10 @@ async fn update(
             _ => return Err(bad("상태 값이 올바르지 않아")),
         }
     }
-    sqlx::query("UPDATE courses SET title = ?, date = ?, status = ?, theme = ? WHERE id = ?")
+    sqlx::query("UPDATE courses SET title = ?, date = ?, status = ? WHERE id = ?")
         .bind(&title)
         .bind(&date)
         .bind(&status)
-        .bind(&theme)
         .bind(&id)
         .execute(&mut *tx)
         .await?;
@@ -232,12 +225,39 @@ async fn update(
         &id,
         "planner",
         "course.update",
-        json!({ "title": title, "date": date, "status": status, "theme": theme }),
+        json!({ "title": title, "date": date, "status": status }),
     )
     .await?;
     let full = model::full(&mut tx, &id).await?;
     tx.commit().await?;
     Ok(Json(full))
+}
+
+#[derive(Serialize, Deserialize)]
+struct ThemeBody {
+    theme: String,
+}
+
+async fn get_theme(State(st): State<AppState>) -> Result<Json<ThemeBody>> {
+    let mut conn = st.db.acquire().await?;
+    Ok(Json(ThemeBody {
+        theme: model::theme(&mut conn).await?,
+    }))
+}
+
+/// The look of every page behind the birthday (the archive and the shared courses).
+async fn set_theme(
+    State(st): State<AppState>,
+    Json(b): Json<ThemeBody>,
+) -> Result<Json<ThemeBody>> {
+    if !model::THEMES.contains(&b.theme.as_str()) {
+        return Err(bad("테마 값이 올바르지 않아"));
+    }
+    sqlx::query("INSERT OR REPLACE INTO app_info (key, value) VALUES ('theme', ?)")
+        .bind(&b.theme)
+        .execute(&st.db)
+        .await?;
+    Ok(Json(b))
 }
 
 async fn remove(State(st): State<AppState>, Path(id): Path<String>) -> Result<StatusCode> {

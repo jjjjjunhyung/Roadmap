@@ -94,8 +94,6 @@ pub struct PickView {
     date: String,
     /// "draft" (not shared yet) | "open" | "done"
     status: String,
-    /// "plain" | "holiday"
-    theme: String,
     steps: Vec<StepSummary>,
     /// the steps still to choose, with their games and candidates, in course order
     open: Vec<OpenStep>,
@@ -108,7 +106,6 @@ async fn build(conn: &mut SqliteConnection, code: &str) -> Result<PickView> {
             title: course.title,
             date: course.date,
             status: course.status,
-            theme: course.theme,
             steps: vec![],
             open: vec![],
         });
@@ -169,7 +166,6 @@ async fn build(conn: &mut SqliteConnection, code: &str) -> Result<PickView> {
         title: course.title,
         date: course.date,
         status: course.status,
-        theme: course.theme,
         steps: summaries,
         open,
     })

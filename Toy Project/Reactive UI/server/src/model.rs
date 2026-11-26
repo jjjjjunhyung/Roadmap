@@ -13,8 +13,6 @@ pub struct Course {
     pub title: String,
     pub date: String,
     pub status: String,
-    /// "plain" | "holiday": how the shared page looks
-    pub theme: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -68,7 +66,7 @@ pub struct CourseFull {
 // (sqlx 0.9 rejects SQL assembled at runtime).
 macro_rules! course_cols {
     () => {
-        "id, share_code, title, date, status, theme, created_at, updated_at"
+        "id, share_code, title, date, status, created_at, updated_at"
     };
 }
 macro_rules! step_cols {
@@ -224,6 +222,20 @@ pub async fn settle(conn: &mut SqliteConnection, course_id: &str) -> Result<()> 
         .await?;
     Ok(())
 }
+
+/// How the pages behind the birthday look: "plain" or "holiday" (winter night, snow, string
+/// lights). One switch for the whole site, set by the planner.
+pub async fn theme(conn: &mut SqliteConnection) -> Result<String> {
+    Ok(
+        sqlx::query_scalar::<_, String>("SELECT value FROM app_info WHERE key = 'theme'")
+            .fetch_optional(&mut *conn)
+            .await?
+            .filter(|t| THEMES.contains(&t.as_str()))
+            .unwrap_or_else(|| "plain".into()),
+    )
+}
+
+pub const THEMES: [&str; 2] = ["plain", "holiday"];
 
 pub async fn touch(conn: &mut SqliteConnection, course_id: &str) -> Result<()> {
     sqlx::query(

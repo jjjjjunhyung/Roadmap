@@ -189,10 +189,19 @@ struct ClientConfig {
     archive_digits: Option<usize>,
     /// Cloudflare Turnstile site key for the passcode form; null when not required
     turnstile_site_key: Option<String>,
+    /// "plain" | "holiday": how the pages behind the birthday look
+    theme: String,
 }
 
 async fn config(State(state): State<AppState>) -> Json<ClientConfig> {
+    let theme = match state.db.acquire().await {
+        Ok(mut conn) => model::theme(&mut conn)
+            .await
+            .unwrap_or_else(|_| "plain".into()),
+        Err(_) => "plain".into(),
+    };
     Json(ClientConfig {
+        theme,
         naver_map_client_id: state.naver_map_client_id.clone(),
         archive_digits: state.archive.as_ref().map(|a| a.digits()),
         turnstile_site_key: state

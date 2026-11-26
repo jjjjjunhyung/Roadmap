@@ -1400,34 +1400,42 @@ async fn origin_hostname_needs_cloudfronts_secret() {
     );
 }
 
-/// The planner picks how the shared page looks; the link carries it, drafts included.
+/// One switch for the look of every page behind the birthday: the planner sets it, the web app
+/// reads it from /api/config.
 #[tokio::test]
-async fn course_theme_reaches_the_link() {
+async fn site_theme_is_one_switch() {
     let app = app(Some(KEY)).await;
-    let c = seeded(&app).await;
-    let (id, code) = (c["id"].as_str().unwrap(), c["share_code"].as_str().unwrap());
-    assert_eq!(c["theme"], "plain");
-    let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
-    assert_eq!(v["theme"], "plain");
-
-    let c = plan(
-        &app,
-        Method::PATCH,
-        &format!("/courses/{id}"),
-        Some(json!({ "theme": "holiday" })),
-    )
-    .await;
-    assert_eq!(
-        (c["theme"].as_str(), c["status"].as_str()),
-        (Some("holiday"), Some("draft"))
-    );
-    let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
-    assert_eq!(v["theme"], "holiday", "drafts show it too");
+    let (_, cfg) = call(&app, Method::GET, "/api/config", None, None).await;
+    assert_eq!(cfg["theme"], "plain");
 
     let (s, _) = call(
         &app,
-        Method::PATCH,
-        &format!("/api/plan/courses/{id}"),
+        Method::PUT,
+        "/api/plan/theme",
+        Some(json!({ "theme": "holiday" })),
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "planner only");
+    let v = plan(
+        &app,
+        Method::PUT,
+        "/theme",
+        Some(json!({ "theme": "holiday" })),
+    )
+    .await;
+    assert_eq!(v["theme"], "holiday");
+    let (_, cfg) = call(&app, Method::GET, "/api/config", None, None).await;
+    assert_eq!(cfg["theme"], "holiday");
+    assert_eq!(
+        plan(&app, Method::GET, "/theme", None).await["theme"],
+        "holiday"
+    );
+
+    let (s, _) = call(
+        &app,
+        Method::PUT,
+        "/api/plan/theme",
         Some(json!({ "theme": "neon" })),
         Some(KEY),
     )

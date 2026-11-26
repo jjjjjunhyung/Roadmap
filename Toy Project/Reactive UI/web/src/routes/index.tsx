@@ -13,6 +13,7 @@ import {
   wishApi,
 } from "../lib/api";
 import { Envelope, type EnvelopeHandle } from "../components/Envelope";
+import { HolidaySky, StringLights } from "../components/Holiday";
 import { useTurnstile } from "../components/Turnstile";
 import { WeatherIcon } from "../components/Weather";
 import { Wishlist } from "../components/Wishlist";
@@ -28,7 +29,11 @@ function Home() {
   if (cfg.isPending) return <main className="page" />;
   const digits = cfg.data?.archive_digits;
   return digits ? (
-    <Archive digits={digits} siteKey={cfg.data?.turnstile_site_key ?? null} />
+    <Archive
+      digits={digits}
+      siteKey={cfg.data?.turnstile_site_key ?? null}
+      holiday={cfg.data?.theme === "holiday"}
+    />
   ) : (
     <Landing />
   );
@@ -49,7 +54,8 @@ function Landing() {
   );
 }
 
-function Archive({ digits, siteKey }: { digits: number; siteKey: string | null }) {
+function Archive(props: { digits: number; siteKey: string | null; holiday: boolean }) {
+  const { digits, siteKey, holiday } = props;
   const qc = useQueryClient();
   const q = useQuery({
     queryKey: ["archive"],
@@ -91,6 +97,7 @@ function Archive({ digits, siteKey }: { digits: number; siteKey: string | null }
   return (
     <Memories
       list={q.data}
+      holiday={holiday}
       onLock={async () => {
         await archiveApi.lock().catch(() => undefined);
         sfx.tap();
@@ -344,7 +351,8 @@ function readView(): View {
   }
 }
 
-function Memories({ list, onLock }: { list: Memory[]; onLock: () => void }) {
+function Memories(props: { list: Memory[]; holiday: boolean; onLock: () => void }) {
+  const { list, holiday, onLock } = props;
   const [view, setView] = useState<View>(readView);
   const wishes = useQuery({ queryKey: ["wishes"], queryFn: wishApi.list, retry: false });
   const show = (v: View) => {
@@ -363,7 +371,13 @@ function Memories({ list, onLock }: { list: Memory[]; onLock: () => void }) {
     { name: "지난 데이트", items: done.filter((m) => daysTo(m.date) < 0) },
   ];
   return (
-    <main className="page">
+    <main className={`page${holiday ? " holiday" : ""}`}>
+      {holiday && (
+        <>
+          <HolidaySky />
+          <StringLights />
+        </>
+      )}
       <header className="masthead">
         <div className="topline">
           <span className="for">for you</span>

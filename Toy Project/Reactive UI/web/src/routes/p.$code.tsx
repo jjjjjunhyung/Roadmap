@@ -48,7 +48,8 @@ function Picker() {
   const [morph, setMorph] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [focus, setFocus] = useState<string[]>([]);
-  const home = !!useConfig().data?.archive_digits;
+  const cfg = useConfig();
+  const home = !!cfg.data?.archive_digits;
   const wx = useQuery({
     queryKey: ["weather", code],
     queryFn: () => pickApi.weather(code),
@@ -182,7 +183,7 @@ function Picker() {
       </main>
     );
   }
-  const holiday = v.theme === "holiday";
+  const holiday = cfg.data?.theme === "holiday";
   const look = holiday ? (
     <>
       <HolidaySky />

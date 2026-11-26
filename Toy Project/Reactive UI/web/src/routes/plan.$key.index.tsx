@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { BackupCard } from "../components/Backup";
 import { GuardCard } from "../components/Guard";
+import { ThemeCard } from "../components/ThemeCard";
 import { Toast } from "../components/ui";
 import { errorMessage, planApi } from "../lib/api";
 import { formatDate } from "../lib/look";
@@ -118,6 +119,7 @@ function CourseList() {
           </ul>
         )}
       </section>
+      <ThemeCard api={api} />
       <GuardCard api={api} plannerKey={key} />
       <BackupCard api={api} plannerKey={key} />
       <Toast message={toast} onDone={clearToast} />
