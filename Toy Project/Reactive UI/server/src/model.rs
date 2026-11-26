@@ -13,6 +13,8 @@ pub struct Course {
     pub title: String,
     pub date: String,
     pub status: String,
+    /// "plain" | "holiday": how the shared page looks
+    pub theme: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -66,7 +68,7 @@ pub struct CourseFull {
 // (sqlx 0.9 rejects SQL assembled at runtime).
 macro_rules! course_cols {
     () => {
-        "id, share_code, title, date, status, created_at, updated_at"
+        "id, share_code, title, date, status, theme, created_at, updated_at"
     };
 }
 macro_rules! step_cols {

@@ -1,0 +1,171 @@
+/* The holiday look for a shared page (the planner's "연말" theme): the whole page takes a winter
+   night palette, a starry sky and falling snow sit behind the content, and string lights hang
+   along the top. Every component already reads these tokens, so games, tickets and sheets follow. */
+
+:root[data-look="holiday"] {
+  --paper: #0d1226;
+  --card: #161c36;
+  --raise: #1c2342;
+  --ink: #f4f0e8;
+  --ink-2: #cdc9d8;
+  --muted: #8f94ad;
+  --line: #2c3356;
+  --line-2: #232a48;
+  --accent: #d6405a;
+  --accent-ink: #ffffff;
+  --gold: #e6bf6e;
+  --shadow-1: 0 1px 0 rgb(255 255 255 / 0.03), 0 14px 34px -16px rgb(0 0 0 / 0.75);
+  --shadow-2: 0 1px 0 rgb(255 255 255 / 0.04), 0 30px 60px -20px rgb(0 0 0 / 0.85);
+  --grain-o: 0.06;
+  color-scheme: dark;
+}
+:root[data-look="holiday"] .grain {
+  mix-blend-mode: screen;
+}
+
+/* the sky and the snow: fixed, behind the page (body's background shows through the root) */
+.holiday-sky {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 100lvh;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 55% at 50% 112%, rgb(150 52 70 / 0.5), transparent 62%),
+    radial-gradient(70% 38% at 85% -4%, rgb(70 90 180 / 0.38), transparent 70%),
+    linear-gradient(180deg, #090e1f, #121935 55%, #1c1730);
+}
+.holiday-sky::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(1.2px 1.2px at 12% 18%, rgb(255 255 255 / 0.8), transparent),
+    radial-gradient(1px 1px at 34% 9%, rgb(255 255 255 / 0.6), transparent),
+    radial-gradient(1.4px 1.4px at 62% 22%, rgb(255 255 255 / 0.7), transparent),
+    radial-gradient(1px 1px at 81% 31%, rgb(255 255 255 / 0.5), transparent),
+    radial-gradient(1.2px 1.2px at 23% 41%, rgb(255 255 255 / 0.45), transparent),
+    radial-gradient(1px 1px at 90% 12%, rgb(255 255 255 / 0.7), transparent),
+    radial-gradient(1px 1px at 47% 35%, rgb(255 255 255 / 0.4), transparent),
+    radial-gradient(1.3px 1.3px at 6% 52%, rgb(255 255 255 / 0.35), transparent);
+}
+.holiday-snow {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* room for the lights at the top of the page */
+.page.holiday {
+  position: relative;
+  padding-top: calc(76px + env(safe-area-inset-top, 0px));
+}
+.lights {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: env(safe-area-inset-top, 0px);
+  height: 80px;
+  z-index: 3;
+  pointer-events: none;
+}
+.lights svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+}
+.lights path {
+  fill: none;
+  stroke: #4f4a66;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.bulb {
+  position: absolute;
+  width: 14px;
+  height: 24px;
+  margin-left: -7px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  pointer-events: auto;
+  transform-origin: 50% 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.bulb .cap {
+  display: block;
+  width: 6px;
+  height: 5px;
+  margin: 0 auto;
+  border-radius: 1.5px;
+  background: #4f4a66;
+}
+.bulb .glass {
+  display: block;
+  width: 10px;
+  height: 14px;
+  margin: 0 auto;
+  border-radius: 50% 50% 50% 50% / 42% 42% 58% 58%;
+  background: radial-gradient(circle at 40% 32%, #ffffff 0 16%, var(--c) 52%);
+  box-shadow:
+    0 0 7px 2px color-mix(in srgb, var(--c) 75%, transparent),
+    0 0 22px 7px color-mix(in srgb, var(--c) 32%, transparent);
+  animation: twinkle 2.8s ease-in-out var(--d) infinite;
+  transition:
+    background 0.25s,
+    box-shadow 0.25s;
+}
+.bulb.off .glass {
+  background: color-mix(in srgb, var(--c) 28%, #50535c);
+  box-shadow: none;
+  animation: none;
+}
+.bulb:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+@keyframes twinkle {
+  50% {
+    filter: brightness(0.7) saturate(0.85);
+    box-shadow:
+      0 0 4px 1px color-mix(in srgb, var(--c) 55%, transparent),
+      0 0 12px 3px color-mix(in srgb, var(--c) 18%, transparent);
+  }
+}
+
+/* the page's own cards turn to frosted glass, so the snow shows through behind them */
+:root[data-look="holiday"] .wx:not(.wx-far),
+:root[data-look="holiday"] .day-row {
+  background: rgb(28 35 66 / 0.6);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.1),
+    var(--shadow-1);
+}
+:root[data-look="holiday"] .day-row[data-state="open"] {
+  background: rgb(32 40 76 / 0.72);
+  box-shadow:
+    inset 0 0 0 1.5px color-mix(in srgb, var(--gold) 60%, transparent),
+    var(--shadow-1);
+}
+:root[data-look="holiday"] .day-row[data-state="open"] .tag {
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+}
+:root[data-look="holiday"] .day-left b {
+  color: var(--gold);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bulb .glass {
+    animation: none;
+  }
+}

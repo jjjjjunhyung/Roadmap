@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { Album } from "../components/Album";
+import { HolidaySky, StringLights } from "../components/Holiday";
 import { CandidateMap, CourseMap } from "../components/Maps";
 import { WeatherStrip } from "../components/Weather";
 import { Itinerary, Masthead, ResultSheet, Ticket, Toast, Tile } from "../components/ui";
@@ -181,9 +182,18 @@ function Picker() {
       </main>
     );
   }
+  const holiday = v.theme === "holiday";
+  const look = holiday ? (
+    <>
+      <HolidaySky />
+      <StringLights />
+    </>
+  ) : null;
+
   if (v.status === "draft") {
     return (
-      <main className="page">
+      <main className={`page${holiday ? " holiday" : ""}`}>
+        {look}
         <Masthead date={v.date} title={v.title} home={home} />
         <WeatherStrip report={wx.data} />
         <div className="message">
@@ -198,7 +208,8 @@ function Picker() {
   const anyFixed = v.steps.some((s) => s.state === "fixed");
 
   return (
-    <main className="page">
+    <main className={`page${holiday ? " holiday" : ""}`}>
+      {look}
       <Masthead
         date={v.date}
         title={v.title}

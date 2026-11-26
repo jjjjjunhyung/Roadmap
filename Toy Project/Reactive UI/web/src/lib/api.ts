@@ -45,10 +45,14 @@ export interface OpenStep {
   candidates: Place[];
 }
 
+/** How the shared page looks: the usual paper, or winter night with snow and string lights. */
+export type Theme = "plain" | "holiday";
+
 export interface PickView {
   title: string;
   date: string;
   status: CourseStatus;
+  theme: Theme;
   steps: StepSummary[];
   /** the steps still to choose, in course order; she plays them in any order */
   open: OpenStep[];
@@ -95,6 +99,7 @@ export interface CourseFull {
   title: string;
   date: string;
   status: CourseStatus;
+  theme: Theme;
   created_at: string;
   updated_at: string;
   steps: Step[];
@@ -339,7 +344,7 @@ export function planApi(key: string) {
     course: (id: string) => r<CourseFull>("GET", `/courses/${id}`),
     update: (
       id: string,
-      body: Partial<Pick<CourseFull, "title" | "date">> & { status?: "draft" | "open" },
+      body: Partial<Pick<CourseFull, "title" | "date" | "theme">> & { status?: "draft" | "open" },
     ) => r<CourseFull>("PATCH", `/courses/${id}`, body),
     remove: (id: string) => r<void>("DELETE", `/courses/${id}`),
     reset: (id: string) => r<CourseFull>("POST", `/courses/${id}/reset`),

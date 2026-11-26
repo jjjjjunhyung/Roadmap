@@ -1399,3 +1399,38 @@ async fn origin_hostname_needs_cloudfronts_secret() {
         "public hostname untouched"
     );
 }
+
+/// The planner picks how the shared page looks; the link carries it, drafts included.
+#[tokio::test]
+async fn course_theme_reaches_the_link() {
+    let app = app(Some(KEY)).await;
+    let c = seeded(&app).await;
+    let (id, code) = (c["id"].as_str().unwrap(), c["share_code"].as_str().unwrap());
+    assert_eq!(c["theme"], "plain");
+    let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
+    assert_eq!(v["theme"], "plain");
+
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/courses/{id}"),
+        Some(json!({ "theme": "holiday" })),
+    )
+    .await;
+    assert_eq!(
+        (c["theme"].as_str(), c["status"].as_str()),
+        (Some("holiday"), Some("draft"))
+    );
+    let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
+    assert_eq!(v["theme"], "holiday", "drafts show it too");
+
+    let (s, _) = call(
+        &app,
+        Method::PATCH,
+        &format!("/api/plan/courses/{id}"),
+        Some(json!({ "theme": "neon" })),
+        Some(KEY),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}

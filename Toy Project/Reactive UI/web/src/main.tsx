@@ -10,6 +10,7 @@ import "./styles/picker.css";
 import "./styles/games.css";
 import "./styles/plan.css";
 import "./styles/archive.css";
+import "./styles/holiday.css";
 import { routeTree } from "./routeTree.gen";
 
 const queryClient = new QueryClient({

@@ -171,6 +171,8 @@ struct CoursePatch {
     date: Option<String>,
     /// "draft" (hidden from the picker) or "open" (link works)
     status: Option<String>,
+    /// "plain" or "holiday" (the shared page in winter night, snow and string lights)
+    theme: Option<String>,
 }
 
 async fn update(
@@ -187,6 +189,11 @@ async fn update(
     let date = match &p.date {
         Some(d) => v::date(d)?,
         None => cur.date.clone(),
+    };
+    let theme = match p.theme.as_deref() {
+        Some(t @ ("plain" | "holiday")) => t.to_owned(),
+        Some(_) => return Err(bad("테마 값이 올바르지 않아")),
+        None => cur.theme.clone(),
     };
     let mut status = cur.status.clone();
     if let Some(s) = &p.status {
@@ -211,10 +218,11 @@ async fn update(
             _ => return Err(bad("상태 값이 올바르지 않아")),
         }
     }
-    sqlx::query("UPDATE courses SET title = ?, date = ?, status = ? WHERE id = ?")
+    sqlx::query("UPDATE courses SET title = ?, date = ?, status = ?, theme = ? WHERE id = ?")
         .bind(&title)
         .bind(&date)
         .bind(&status)
+        .bind(&theme)
         .bind(&id)
         .execute(&mut *tx)
         .await?;
@@ -224,7 +232,7 @@ async fn update(
         &id,
         "planner",
         "course.update",
-        json!({ "title": title, "date": date, "status": status }),
+        json!({ "title": title, "date": date, "status": status, "theme": theme }),
     )
     .await?;
     let full = model::full(&mut tx, &id).await?;
