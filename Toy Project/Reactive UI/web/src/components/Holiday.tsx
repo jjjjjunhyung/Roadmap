@@ -73,7 +73,8 @@ export function HolidaySky() {
       cv.width = Math.round(W * dpr);
       cv.height = Math.round(H * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const n = Math.min(140, Math.round((W * H) / 8000));
+      // about one flake per 80×80 px: some 50 on a phone
+      const n = Math.min(175, Math.round((W * H) / 6400));
       while (flakes.length < n) flakes.push(spawn(true));
       flakes.length = n;
     };
