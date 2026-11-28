@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { Album } from "../components/Album";
-import { DayChange } from "../components/DayChange";
+import { DayChange, ExtraSheet } from "../components/DayChange";
 import { HolidaySky, StringLights } from "../components/Holiday";
 import { CandidateMap, CourseMap } from "../components/Maps";
 import { WeatherStrip } from "../components/Weather";
@@ -18,11 +18,12 @@ import {
   type StepSummary,
   errorMessage,
   archiveApi,
+  type Extra,
   pickApi,
 } from "../lib/api";
 import { useConfig } from "../lib/config";
 import { accent, burst, haptic, reducedMotion, sfx, viewTransition } from "../lib/feel";
-import { aura, formOf, workLine } from "../lib/look";
+import { KIND_LABEL, aura, formOf, workLine } from "../lib/look";
 
 export const Route = createFileRoute("/p/$code")({ component: Picker });
 
@@ -78,6 +79,39 @@ function lived(steps: StepSummary[]): StepSummary[] {
   });
 }
 
+/** The day's route for the map: the stops as they went, with the places they dropped by. */
+function route(steps: StepSummary[], extras: Extra[]): StepSummary[] {
+  const stop = (e: Extra): StepSummary => ({
+    id: e.id,
+    kind: e.kind,
+    label: KIND_LABEL[e.kind] ?? "활동",
+    time: e.time,
+    state: "done",
+    actual: null,
+    picked: {
+      id: e.id,
+      name: e.name,
+      memo: e.memo,
+      map_url: e.map_url,
+      image_url: e.image_url,
+      lat: e.lat,
+      lng: e.lng,
+      link_url: "",
+      starts_at: "",
+      runtime_min: null,
+      venue: null,
+    },
+  });
+  const ids = new Set(steps.map((s) => s.id));
+  return [
+    ...lived(steps).flatMap((s) => [
+      s,
+      ...extras.filter((e) => e.after_step_id === s.id).map(stop),
+    ]),
+    ...extras.filter((e) => !e.after_step_id || !ids.has(e.after_step_id)).map(stop),
+  ];
+}
+
 function Picker() {
   const { code } = Route.useParams();
   const qc = useQueryClient();
@@ -102,6 +136,8 @@ function Picker() {
   }).isSuccess;
   const [fixing, setFixing] = useState(false);
   const [changing, setChanging] = useState<StepSummary | null>(null);
+  // a place they dropped by: one to edit, or "new"
+  const [dropIn, setDropIn] = useState<Extra | "new" | null>(null);
   const cfg = useConfig();
   const home = !!cfg.data?.archive_digits;
   const wx = useQuery({
@@ -293,7 +329,9 @@ function Picker() {
             steps={dressed.steps}
             sealRef={sealRef}
             weather={wx.data}
+            extras={v.extras}
             onChange={fixing ? setChanging : undefined}
+            onExtra={fixing ? (e) => setDropIn(e ?? "new") : undefined}
           />
           {signedIn && (
             <button
@@ -304,7 +342,7 @@ function Picker() {
               {fixing ? "다 고쳤어" : "당일에 바뀐 곳 고치기"}
             </button>
           )}
-          <CourseMap steps={lived(v.steps)} />
+          <CourseMap steps={route(v.steps, v.extras)} />
           <Album code={code} steps={lived(v.steps)} />
         </>
       ) : cur && game ? (
@@ -385,6 +423,19 @@ function Picker() {
             setChanging(null);
           }}
           onClose={() => setChanging(null)}
+        />
+      )}
+      {dropIn && (
+        <ExtraSheet
+          code={code}
+          steps={v.steps}
+          extra={dropIn === "new" ? null : dropIn}
+          onSaved={(next) => {
+            qc.setQueryData(["pick", code], next);
+            void qc.invalidateQueries({ queryKey: ["archive"] });
+            setDropIn(null);
+          }}
+          onClose={() => setDropIn(null)}
         />
       )}
       <Toast message={toast} onDone={clearToast} />

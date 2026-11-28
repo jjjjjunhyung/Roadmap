@@ -979,13 +979,9 @@
   cursor: pointer;
 }
 
-/* a stop the day changed: skipped ones crossed out, replacements marked */
+/* a stop the day changed: a skipped one quietly crossed out; a replacement or a place they
+   dropped by reads like any other stop */
 .memory .route .skipped {
   color: var(--muted);
   text-decoration: line-through;
-  text-decoration-color: var(--accent);
-}
-.memory .route .replaced {
-  text-decoration: underline dotted var(--accent);
-  text-underline-offset: 3px;
 }

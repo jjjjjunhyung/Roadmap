@@ -302,6 +302,10 @@ async fn reset(State(st): State<AppState>, Path(id): Path<String>) -> Result<Jso
     .bind(&id)
     .execute(&mut *tx)
     .await?;
+    sqlx::query("DELETE FROM extra_stops WHERE course_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
     // fixed steps are picked again right away (model::changed below)
     model::changed(&mut tx, &id).await?;
     model::log(&mut tx, &id, "planner", "course.reset", json!({})).await?;

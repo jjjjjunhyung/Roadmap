@@ -312,7 +312,7 @@ struct Stop {
     name: Option<String>,
     image_url: Option<String>,
     /// "replaced" | "skipped" when the day changed the plan (name is then the new place, or
-    /// still the planned one for a skipped stop)
+    /// still the planned one for a skipped stop); "added" for a place they dropped by
     changed: Option<&'static str>,
 }
 
@@ -331,6 +331,7 @@ struct Memory {
 #[derive(sqlx::FromRow)]
 struct StopRow {
     course_id: String,
+    step_id: String,
     label: String,
     kind: String,
     time: String,
@@ -350,7 +351,7 @@ async fn list(State(st): State<AppState>, headers: HeaderMap) -> Result<Response
     .fetch_all(&st.db)
     .await?;
     let rows = sqlx::query_as::<_, StopRow>(
-        "SELECT s.course_id, s.label, s.kind, s.time, c.name, c.image_url, \
+        "SELECT s.course_id, s.id AS step_id, s.label, s.kind, s.time, c.name, c.image_url, \
            a.skipped, a.name AS actual_name, a.image_url AS actual_image FROM steps s \
          JOIN courses k ON k.id = s.course_id \
          LEFT JOIN candidates c ON c.id = s.picked_id AND c.deleted_at IS NULL \
@@ -372,14 +373,48 @@ async fn list(State(st): State<AppState>, headers: HeaderMap) -> Result<Response
             ids.push(id);
         }
     }
+    // places they dropped by, each after the stop it followed (or at the end)
+    let mut extras: std::collections::HashMap<String, Vec<(Option<String>, Stop)>> =
+        Default::default();
+    for (course, after, time, kind, name, image) in
+        sqlx::query_as::<_, (String, Option<String>, String, String, String, String)>(
+            "SELECT course_id, after_step_id, time, kind, name, image_url FROM extra_stops \
+             ORDER BY time = '', time, created_at, rowid",
+        )
+        .fetch_all(&st.db)
+        .await?
+    {
+        extras.entry(course).or_default().push((
+            after,
+            Stop {
+                label: crate::validate::kind_label(&kind).into(),
+                kind,
+                time,
+                name: Some(name),
+                image_url: Some(image).filter(|u| !u.is_empty()),
+                changed: Some("added"),
+            },
+        ));
+    }
     let mut stops: std::collections::HashMap<String, Vec<Stop>> = Default::default();
     for r in rows {
+        let after_this: Vec<Stop> = match extras.get_mut(&r.course_id) {
+            Some(xs) => {
+                let (mine, rest): (Vec<_>, Vec<_>) = xs
+                    .drain(..)
+                    .partition(|(a, _)| a.as_deref() == Some(r.step_id.as_str()));
+                *xs = rest;
+                mine.into_iter().map(|(_, s)| s).collect()
+            }
+            None => vec![],
+        };
         let (name, image_url, changed) = match r.skipped {
             Some(true) => (r.name, r.image_url, Some("skipped")),
             Some(false) => (r.actual_name, r.actual_image, Some("replaced")),
             None => (r.name, r.image_url, None),
         };
-        stops.entry(r.course_id).or_default().push(Stop {
+        let list = stops.entry(r.course_id).or_default();
+        list.push(Stop {
             label: r.label,
             kind: r.kind,
             time: r.time,
@@ -387,6 +422,14 @@ async fn list(State(st): State<AppState>, headers: HeaderMap) -> Result<Response
             name,
             changed,
         });
+        list.extend(after_this);
+    }
+    // extras whose stop is gone (or that came last) close the day
+    for (course, rest) in extras {
+        stops
+            .entry(course)
+            .or_default()
+            .extend(rest.into_iter().map(|(_, s)| s));
     }
     let memories: Vec<Memory> = courses
         .into_iter()

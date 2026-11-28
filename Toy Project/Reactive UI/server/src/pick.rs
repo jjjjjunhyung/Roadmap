@@ -128,6 +128,8 @@ pub struct PickView {
     steps: Vec<StepSummary>,
     /// the steps still to choose, with their games and candidates, in course order
     open: Vec<OpenStep>,
+    /// places they dropped by on the day, each after one of the steps
+    extras: Vec<model::Extra>,
 }
 
 pub(crate) async fn build(conn: &mut SqliteConnection, code: &str) -> Result<PickView> {
@@ -139,6 +141,7 @@ pub(crate) async fn build(conn: &mut SqliteConnection, code: &str) -> Result<Pic
             status: course.status,
             steps: vec![],
             open: vec![],
+            extras: vec![],
         });
     }
     let steps = model::steps(conn, &course.id).await?;
@@ -208,6 +211,7 @@ pub(crate) async fn build(conn: &mut SqliteConnection, code: &str) -> Result<Pic
         status: course.status,
         steps: summaries,
         open,
+        extras: model::extras(conn, &course.id).await?,
     })
 }
 

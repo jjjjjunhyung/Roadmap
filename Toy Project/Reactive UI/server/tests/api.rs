@@ -1723,3 +1723,157 @@ async fn the_day_can_change_a_decided_stop() {
     let c = plan(&app, Method::GET, &format!("/courses/{id}"), None).await;
     assert!(c["steps"][1]["actual"].is_null());
 }
+
+/// Places they dropped by on the day: added after a stop (signed in with the birthday), shown
+/// to everyone with the link, listed in the archive in order, editable and removable, and
+/// forgotten by a planner reset.
+#[tokio::test]
+async fn the_day_can_add_places_they_dropped_by() {
+    let app = app(Some(KEY)).await;
+    let c = seeded(&app).await;
+    let other = seeded(&app).await;
+    let id = c["id"].as_str().unwrap().to_string();
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/courses/{id}"),
+        Some(json!({ "status": "open" })),
+    )
+    .await;
+    let code = c["share_code"].as_str().unwrap().to_string();
+    let s0 = c["steps"][0]["id"].as_str().unwrap().to_string();
+    let foreign = other["steps"][0]["id"].as_str().unwrap().to_string();
+    let extras = format!("/api/archive/courses/{code}/extras");
+    let (_, set, _) = archive_call(
+        &app,
+        "192.0.2.70",
+        Method::POST,
+        "/api/archive/unlock",
+        Some(json!({ "code": BIRTHDAY })),
+        None,
+    )
+    .await;
+    let cookie = set.unwrap().split(';').next().unwrap().to_string();
+    let ck = Some(cookie.as_str());
+    let karaoke = json!({ "after_step_id": s0, "time": "21:30", "kind": "arcade", "name": "코인 노래방", "memo": "즉흥으로" });
+
+    let (s, _, _) = archive_call(
+        &app,
+        "192.0.2.70",
+        Method::POST,
+        &extras,
+        Some(karaoke.clone()),
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED, "the birthday comes first");
+    let (s, _, _) = archive_call(
+        &app,
+        "192.0.2.70",
+        Method::POST,
+        &extras,
+        Some(json!({ "after_step_id": foreign, "name": "x" })),
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "only after this course's stops");
+    let (s, _, _) = archive_call(
+        &app,
+        "192.0.2.70",
+        Method::POST,
+        &extras,
+        Some(json!({ "name": "x", "kind": "opera" })),
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+
+    let (s, _, v) =
+        archive_call(&app, "192.0.2.70", Method::POST, &extras, Some(karaoke), ck).await;
+    assert_eq!(s, StatusCode::OK);
+    let (s, _, v2) = archive_call(
+        &app,
+        "192.0.2.70",
+        Method::POST,
+        &extras,
+        Some(json!({ "name": "편의점 아이스크림" })),
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["extras"][0]["name"], "코인 노래방");
+    assert_eq!(v["extras"][0]["after_step_id"], s0.as_str());
+    let late = v2["extras"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["name"] == "편의점 아이스크림")
+        .unwrap();
+    assert!(late["after_step_id"].is_null() && late["kind"] == "play");
+    let karaoke_id = v["extras"][0]["id"].as_str().unwrap().to_string();
+
+    // everyone with the link sees them; the archive lists them where they happened
+    let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
+    assert_eq!(v["extras"].as_array().unwrap().len(), 2);
+    let (_, _, list) =
+        archive_call(&app, "192.0.2.70", Method::GET, "/api/archive", None, ck).await;
+    let mine = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["share_code"] == code.as_str())
+        .unwrap();
+    let route: Vec<(&str, &str)> = mine["stops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| {
+            (
+                s["label"].as_str().unwrap(),
+                s["changed"].as_str().unwrap_or(""),
+            )
+        })
+        .collect();
+    assert_eq!(route[1], ("오락", "added"), "{route:?}");
+    assert_eq!(route.last().unwrap(), &("활동", "added"), "{route:?}");
+
+    // edit, then remove
+    let (s, _, v) = archive_call(
+        &app,
+        "192.0.2.70",
+        Method::PUT,
+        &format!("{extras}/{karaoke_id}"),
+        Some(json!({ "after_step_id": s0, "time": "22:00", "kind": "arcade", "name": "볼링장" })),
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(
+        v["extras"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["name"] == "볼링장" && e["time"] == "22:00")
+    );
+    let (s, _, v) = archive_call(
+        &app,
+        "192.0.2.70",
+        Method::DELETE,
+        &format!("{extras}/{karaoke_id}"),
+        None,
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["extras"].as_array().unwrap().len(), 1);
+    let c = plan(&app, Method::GET, &format!("/courses/{id}"), None).await;
+    assert_eq!(
+        c["extras"].as_array().unwrap().len(),
+        1,
+        "the planner sees them too"
+    );
+
+    // a reset forgets them with the picks
+    let c = plan(&app, Method::POST, &format!("/courses/{id}/reset"), None).await;
+    assert!(c["extras"].as_array().unwrap().is_empty());
+}

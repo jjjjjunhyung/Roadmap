@@ -1066,3 +1066,21 @@
   font-size: 13px;
   color: var(--accent);
 }
+
+/* places they dropped by on the day */
+.ticket li.add-extra {
+  display: block;
+  padding: 14px 0 6px;
+  text-align: center;
+}
+.dc-field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.dc-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}

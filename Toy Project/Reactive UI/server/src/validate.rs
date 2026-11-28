@@ -14,6 +14,28 @@ pub const KINDS: &[&str] = &[
     "movie", "show", "exhibit", "home",
 ];
 
+/// The Korean name of an icon, as the web app shows it (for stops that have no label of their
+/// own, like a place they dropped by).
+pub fn kind_label(kind: &str) -> &'static str {
+    match kind {
+        "meal" => "식사",
+        "cafe" => "카페",
+        "dinner" => "저녁",
+        "drink" => "술 한잔",
+        "walk" => "산책",
+        "shop" => "쇼핑",
+        "photo" => "사진",
+        "drive" => "드라이브",
+        "arcade" => "오락",
+        "stay" => "호캉스",
+        "movie" => "영화",
+        "show" => "공연",
+        "exhibit" => "전시",
+        "home" => "집 데이트",
+        _ => "활동",
+    }
+}
+
 /// What a step's candidates are: "place" (somewhere on the map, from a map link), "work" (a
 /// movie, show or exhibition: one venue for the step, each candidate a title with a time) or
 /// "free" (a date at home: just a name, a note and a picture).

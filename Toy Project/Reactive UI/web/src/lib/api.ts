@@ -95,7 +95,28 @@ export interface PickView {
   steps: StepSummary[];
   /** the steps still to choose, in course order; she plays them in any order */
   open: OpenStep[];
+  /** places they dropped by on the day, each after one of the steps */
+  extras: Extra[];
 }
+
+/** A place they dropped by on the day that was never in the plan. */
+export interface Extra {
+  id: string;
+  /** the stop it came after; null (or a stop since removed) puts it at the end */
+  after_step_id: string | null;
+  time: string;
+  kind: Kind;
+  name: string;
+  memo: string;
+  map_url: string;
+  image_url: string;
+  lat: number | null;
+  lng: number | null;
+}
+
+export type ExtraInput = Partial<
+  Pick<Extra, "after_step_id" | "time" | "kind" | "name" | "memo" | "map_url">
+>;
 
 export interface Candidate {
   id: string;
@@ -151,6 +172,8 @@ export interface CourseFull {
   created_at: string;
   updated_at: string;
   steps: Step[];
+  /** places they dropped by on the day */
+  extras: Extra[];
 }
 
 export interface CourseSummary {
@@ -171,8 +194,9 @@ export interface MemoryStop {
   time: string;
   name: string | null;
   image_url: string | null;
-  /** "replaced": name is where they went instead; "skipped": name is the planned place */
-  changed: "replaced" | "skipped" | null;
+  /** "replaced": name is where they went instead; "skipped": name is the planned place;
+   * "added": a place they dropped by */
+  changed: "replaced" | "skipped" | "added" | null;
 }
 
 /** A shared course in the archive (drafts never appear). */
@@ -382,6 +406,14 @@ export const dayApi = {
       "DELETE",
       `/archive/courses/${encodeURIComponent(code)}/steps/${stepId}/actual`,
     ),
+  addExtra: (code: string, body: ExtraInput) =>
+    request<PickView>("POST", `/archive/courses/${encodeURIComponent(code)}/extras`, { body }),
+  editExtra: (code: string, id: string, body: ExtraInput) =>
+    request<PickView>("PUT", `/archive/courses/${encodeURIComponent(code)}/extras/${id}`, {
+      body,
+    }),
+  removeExtra: (code: string, id: string) =>
+    request<PickView>("DELETE", `/archive/courses/${encodeURIComponent(code)}/extras/${id}`),
 };
 
 export const albumApi = {

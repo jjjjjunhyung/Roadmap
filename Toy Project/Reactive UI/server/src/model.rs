@@ -72,6 +72,8 @@ pub struct CourseFull {
     #[serde(flatten)]
     pub course: Course,
     pub steps: Vec<StepFull>,
+    /// places they dropped by on the day
+    pub extras: Vec<Extra>,
 }
 
 // Column lists as macros so every query stays a compile-time string literal
@@ -143,6 +145,7 @@ pub async fn full(conn: &mut SqliteConnection, id: &str) -> Result<CourseFull> {
     let steps = steps(conn, id).await?;
     let mut cands = candidates(conn, id).await?;
     let mut actual = actuals(conn, id).await?;
+    let extras = extras(conn, id).await?;
     let steps = steps
         .into_iter()
         .map(|step| {
@@ -156,7 +159,38 @@ pub async fn full(conn: &mut SqliteConnection, id: &str) -> Result<CourseFull> {
             }
         })
         .collect();
-    Ok(CourseFull { course, steps })
+    Ok(CourseFull {
+        course,
+        steps,
+        extras,
+    })
+}
+
+/// A place they dropped by on the day that was never in the plan.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct Extra {
+    pub id: String,
+    /// the stop it came after; null (or a stop since removed) puts it at the end
+    pub after_step_id: Option<String>,
+    pub time: String,
+    pub kind: String,
+    pub name: String,
+    pub memo: String,
+    pub map_url: String,
+    pub image_url: String,
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
+}
+
+/// The day's extra stops of a course, in the order they were added.
+pub async fn extras(conn: &mut SqliteConnection, course_id: &str) -> Result<Vec<Extra>> {
+    Ok(sqlx::query_as::<_, Extra>(
+        "SELECT id, after_step_id, time, kind, name, memo, map_url, image_url, lat, lng \
+         FROM extra_stops WHERE course_id = ? ORDER BY time = '', time, created_at, rowid",
+    )
+    .bind(course_id)
+    .fetch_all(&mut *conn)
+    .await?)
 }
 
 /// Where they really went at a stop, when the day went its own way.

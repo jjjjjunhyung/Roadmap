@@ -238,6 +238,26 @@ function Editor() {
           </>
         )}
       </section>
+      {c.extras.length > 0 && (
+        <section className="extras-note" aria-label="당일에 더 들른 곳">
+          <span className="label">당일에 더 들른 곳</span>
+          <ul>
+            {c.extras.map((e) => {
+              const after = c.steps.find((s) => s.id === e.after_step_id);
+              return (
+                <li key={e.id}>
+                  <b>{e.name}</b>
+                  <span>
+                    {[e.time, after ? `${after.label} 다음` : "맨 끝", e.memo]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <section className="psteps" aria-label="단계">
         {c.steps.map((s, i) => (

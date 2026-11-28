@@ -1,9 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { type CSSProperties, type Ref, useEffect, useRef, useState } from "react";
 
-import type { Kind, Place, StepSummary, WeatherReport } from "../lib/api";
+import type { Extra, Kind, Place, StepSummary, WeatherReport } from "../lib/api";
 import { scramble, sfx, sound } from "../lib/feel";
-import { auraVars, formatDate, two } from "../lib/look";
+import { KIND_LABEL, auraVars, formatDate, two } from "../lib/look";
 import { Glyph } from "./Glyph";
 import { HourWeather } from "./Weather";
 import { useReactive } from "../lib/useReactive";
@@ -225,16 +225,47 @@ export function Ticket({
   steps,
   sealRef,
   weather,
+  extras = [],
   onChange,
+  onExtra,
 }: {
   date: string;
   steps: StepSummary[];
   sealRef?: Ref<HTMLSpanElement>;
   /** the day's forecast: each stop shows its hour */
   weather?: WeatherReport;
+  /** places they dropped by, shown after the stop each followed */
+  extras?: Extra[];
   /** while fixing the day: each stop offers to record what really happened */
   onChange?: (s: StepSummary) => void;
+  /** while fixing the day: edit a place they dropped by, or (null) add one */
+  onExtra?: (e: Extra | null) => void;
 }) {
+  const extraRow = (e: Extra) => (
+    <li key={e.id} className="extra">
+      <span className="tm">
+        {e.time || "—"}
+        <HourWeather report={weather} time={e.time} />
+      </span>
+      <span className="what">
+        <span className="label">
+          {KIND_LABEL[e.kind] ?? "활동"}
+          <i className="ad-lib">즉흥 추가</i>
+        </span>
+        <b>{e.name}</b>
+        {e.memo && <span className="memo">{e.memo}</span>}
+        {e.map_url && <MapChip href={e.map_url} />}
+        {onExtra && (
+          <button type="button" className="fix" onClick={() => onExtra(e)}>
+            고치기
+          </button>
+        )}
+      </span>
+    </li>
+  );
+  const ids = new Set(steps.map((s) => s.id));
+  // extras whose stop is gone (or that came last) close the day
+  const tail = extras.filter((e) => !e.after_step_id || !ids.has(e.after_step_id));
   const d = formatDate(date);
   return (
     <article className="ticket" aria-label="완성된 데이트 코스">
@@ -251,48 +282,61 @@ export function Ticket({
       </div>
       <div className="tear" aria-hidden="true" />
       <ol>
-        {steps.map((s) => {
-          const a = s.actual;
-          return (
-            <li key={s.id} className={a ? "changed" : undefined}>
-              <span className="tm">
-                {s.time || "—"}
-                <HourWeather report={weather} time={s.time} />
-              </span>
-              <span className="what">
-                <span className="label">
-                  {s.label}
-                  {a && <i className="ad-lib">{a.skipped ? "안 갔어" : "즉흥 변경"}</i>}
+        {steps
+          .map((s) => {
+            const a = s.actual;
+            return (
+              <li key={s.id} className={a ? "changed" : undefined}>
+                <span className="tm">
+                  {s.time || "—"}
+                  <HourWeather report={weather} time={s.time} />
                 </span>
-                {a ? (
-                  <>
-                    {/* the plan stays, crossed out */}
-                    <s className="was">{s.picked?.name}</s>
-                    {!a.skipped && (
-                      <b className="instead">
-                        <i>대신</i>
-                        {a.name}
-                      </b>
-                    )}
-                    {a.memo && <span className="memo">{a.memo}</span>}
-                    {!a.skipped && a.map_url && <MapChip href={a.map_url} />}
-                  </>
-                ) : (
-                  <>
-                    <b>{s.picked?.name}</b>
-                    {s.picked?.memo && <span className="memo">{s.picked.memo}</span>}
-                    {s.picked?.map_url && <MapChip href={s.picked.map_url} />}
-                  </>
-                )}
-                {onChange && s.picked && (
-                  <button type="button" className="fix" onClick={() => onChange(s)}>
-                    {a ? "다시 고치기" : "여기 바뀌었어?"}
-                  </button>
-                )}
-              </span>
-            </li>
-          );
-        })}
+                <span className="what">
+                  <span className="label">
+                    {s.label}
+                    {a && <i className="ad-lib">{a.skipped ? "안 갔어" : "즉흥 변경"}</i>}
+                  </span>
+                  {a ? (
+                    <>
+                      {/* the plan stays, crossed out */}
+                      <s className="was">{s.picked?.name}</s>
+                      {!a.skipped && (
+                        <b className="instead">
+                          <i>대신</i>
+                          {a.name}
+                        </b>
+                      )}
+                      {a.memo && <span className="memo">{a.memo}</span>}
+                      {!a.skipped && a.map_url && <MapChip href={a.map_url} />}
+                    </>
+                  ) : (
+                    <>
+                      <b>{s.picked?.name}</b>
+                      {s.picked?.memo && <span className="memo">{s.picked.memo}</span>}
+                      {s.picked?.map_url && <MapChip href={s.picked.map_url} />}
+                    </>
+                  )}
+                  {onChange && s.picked && (
+                    <button type="button" className="fix" onClick={() => onChange(s)}>
+                      {a ? "다시 고치기" : "여기 바뀌었어?"}
+                    </button>
+                  )}
+                </span>
+              </li>
+            );
+          })
+          .flatMap((row, i) => [
+            row,
+            ...extras.filter((e) => e.after_step_id === steps[i].id).map(extraRow),
+          ])}
+        {tail.map(extraRow)}
+        {onExtra && (
+          <li className="add-extra">
+            <button type="button" className="btn small ghost" onClick={() => onExtra(null)}>
+              + 즉흥으로 들른 곳 추가
+            </button>
+          </li>
+        )}
       </ol>
       <div className="tear" aria-hidden="true" />
       <div className="foot">

@@ -499,3 +499,31 @@ a.btn {
   opacity: 0.6;
   cursor: default;
 }
+
+/* places they dropped by on the day, as the planner sees them */
+.extras-note {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.extras-note ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.extras-note li {
+  display: grid;
+  gap: 1px;
+}
+.extras-note li b {
+  font-size: 14px;
+  font-weight: 600;
+}
+.extras-note li span {
+  font-size: 12px;
+  color: var(--muted);
+}
