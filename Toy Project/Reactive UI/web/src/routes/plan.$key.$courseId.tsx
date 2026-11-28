@@ -734,7 +734,7 @@ function AddCandidate(props: { stepId: string; form: Form; api: Api; run: Run })
           className="input"
           value={link}
           onChange={(e) => setLink(e.target.value)}
-          placeholder="왓챠피디아·NOL 티켓 링크 (붙이면 제목·포스터 자동)"
+          placeholder="네이버 영화 검색·NOL 티켓 링크 (제목·포스터 자동)"
           inputMode="url"
           aria-label="정보·예매 링크"
         />

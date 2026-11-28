@@ -17,6 +17,8 @@ const MAX_PAGE: usize = 1024 * 1024;
 pub struct Preview {
     pub title: Option<String>,
     pub image: Option<String>,
+    /// minutes, when the page says (Naver's movie box)
+    pub runtime_min: Option<i64>,
 }
 
 /// A public web address: http(s), a dotted host name, not an IP literal or localhost.
@@ -117,16 +119,77 @@ fn parse(html: &str, page: &Url) -> Preview {
     {
         title = Some(decode(&html[a + open + 1..b]));
     }
-    // search pages have one picture for every query: not a poster
+    // search pages have one picture for every query: not a poster. A Naver search about a
+    // movie has its own box, though, with the poster and the running time.
     let host = page.host_str().unwrap_or_default();
     let searching = host.starts_with("search.") || host.contains(".search.");
+    let naver = host.ends_with("search.naver.com");
+    let image = if searching {
+        naver.then(|| naver_poster(html)).flatten()
+    } else {
+        image.and_then(|i| absolute(&i, page))
+    };
     Preview {
         title: title.map(|t| clean_title(&t)).filter(|t| !t.is_empty()),
-        image: image
-            .filter(|_| !searching)
-            .and_then(|i| absolute(&i, page))
-            .filter(|i| i.len() <= 800),
+        image: image.filter(|i| i.len() <= 800),
+        runtime_min: naver.then(|| naver_runtime(html)).flatten(),
     }
+}
+
+/// The main poster on a Naver search page about a movie: the first picture from Naver's movie
+/// database that is not a small square (those are related movies further down).
+fn naver_poster(html: &str) -> Option<String> {
+    const KEY: &str = "src=https%3A%2F%2Fs.pstatic.net%2Fmovie.phinf%2F";
+    let mut from = 0;
+    while let Some(i) = html[from..].find(KEY) {
+        let at = from + i;
+        from = at + KEY.len();
+        // the resizer's size comes just before: "type=ff64_64" is a thumbnail
+        let before = &html[html[..at].rfind("type=").unwrap_or(at)..at];
+        if before.starts_with("type=ff") {
+            continue;
+        }
+        let start = at + "src=".len();
+        let end = html[start..]
+            .find(['"', '&', '\'', ')', ' ', '\\'])
+            .map_or(html.len(), |e| start + e);
+        let url = percent_decode(&html[start..end])?;
+        if url.starts_with("https://s.pstatic.net/movie.phinf/") {
+            return Some(url);
+        }
+    }
+    None
+}
+
+/// Running time from Naver's movie box: "개요" ["미국", "액션", "158분"] → 158.
+fn naver_runtime(html: &str) -> Option<i64> {
+    let at = html.find("\"key\":\"개요\"")?;
+    let tail = &html[at..];
+    let values = &tail[..tail.find("]}")?];
+    values.split("\"text\":\"").skip(1).find_map(|v| {
+        let v = &v[..v.find('"')?];
+        v.strip_suffix('분')?
+            .parse::<i64>()
+            .ok()
+            .filter(|m| (1..=600).contains(m))
+    })
+}
+
+/// %XX escapes back to text (UTF-8).
+fn percent_decode(s: &str) -> Option<String> {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            out.push(u8::from_str_radix(s.get(i + 1..i + 3)?, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
 }
 
 /// name="value" pairs of one tag ('…', "…" or bare values), names lowercased, values decoded.
@@ -316,6 +379,27 @@ mod tests {
         let p = parse(html, &page());
         assert_eq!(p.title.as_deref(), Some("웍앤올 & 친구들"));
         assert_eq!(p.image.as_deref(), Some("https://cdn.example.com/p.gif"));
+    }
+
+    #[test]
+    fn naver_movie_search_gives_poster_and_runtime() {
+        let html = r#"<meta property="og:title" content="헝거게임 50번째 추첨의 날 : 네이버 검색">
+            <meta property="og:image" content="https://ssl.example.net/og_200x200.png">
+            <img src="https://search.pstatic.net/common?type=ff64_64&amp;src=https%3A%2F%2Fs.pstatic.net%2Fmovie.phinf%2F2014%2Fold.jpg">
+            <div style="background:url(&quot;https://search.pstatic.net/common?type=f208_312&amp;src=https%3A%2F%2Fs.pstatic.net%2Fmovie.phinf%2F20261016_240%2Fmain_JPEG%2Fmovie_image.jpg%3Ftype%3Dw640_2&quot;)"></div>
+            <script>{"key":"개요","values":[{"text":"미국"},{"text":"액션"},{"text":"158분"}]},{"key":"개봉"}</script>"#;
+        let p = parse(
+            html,
+            &Url::parse("https://m.search.naver.com/search.naver?query=x").unwrap(),
+        );
+        assert_eq!(p.title.as_deref(), Some("헝거게임 50번째 추첨의 날"));
+        assert_eq!(
+            p.image.as_deref(),
+            Some(
+                "https://s.pstatic.net/movie.phinf/20261016_240/main_JPEG/movie_image.jpg?type=w640_2"
+            )
+        );
+        assert_eq!(p.runtime_min, Some(158));
     }
 
     #[test]

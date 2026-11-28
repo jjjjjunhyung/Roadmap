@@ -625,11 +625,13 @@ async fn add_candidate(
     // network calls before taking the write lock: the place behind a map link, and the title and
     // poster behind a work's page
     let place = naver::place(&map_url).await;
-    let preview = if !link_url.is_empty() && (typed.is_none() || chosen.is_none()) {
-        link::preview(&link_url).await
-    } else {
-        link::Preview::default()
-    };
+    let preview =
+        if !link_url.is_empty() && (typed.is_none() || chosen.is_none() || runtime_min.is_none()) {
+            link::preview(&link_url).await
+        } else {
+            link::Preview::default()
+        };
+    let runtime_min = runtime_min.or(preview.runtime_min);
     let name = match typed.map(str::to_owned).or(preview.title) {
         Some(n) => v::text(&n, "이름", 30)?,
         None if link_url.is_empty() => return Err(bad("이름을 입력해 줘")),
@@ -697,24 +699,32 @@ async fn update_candidate(
     Json(p): Json<CandidateInput>,
 ) -> Result<Json<CourseFull>> {
     // Work out photo and location before the transaction: the Naver lookup is a network call.
-    type Old = (String, String, Option<f64>, Option<f64>, String);
-    let (old_map, old_image, old_lat, old_lng, old_link): Old = sqlx::query_as(
-        "SELECT map_url, image_url, lat, lng, link_url FROM candidates WHERE id = ?",
+    type Old = (
+        String,
+        String,
+        Option<f64>,
+        Option<f64>,
+        String,
+        Option<i64>,
+    );
+    let (old_map, old_image, old_lat, old_lng, old_link, old_runtime): Old = sqlx::query_as(
+        "SELECT map_url, image_url, lat, lng, link_url, runtime_min FROM candidates WHERE id = ?",
     )
     .bind(&cand_id)
     .fetch_optional(&st.db)
     .await?
     .ok_or(AppError::NotFound("후보를 찾을 수 없어"))?;
     let new_link = p.link_url.as_deref().map(v::link).transpose()?;
-    // a work's new page may bring the poster it never had
+    // a work's new page may bring the poster or running time it never had
+    let wants_image = old_image.is_empty() && p.image_url.is_none();
+    let wants_runtime = old_runtime.is_none() && p.runtime_min.is_none();
     let preview = match &new_link {
-        Some(l)
-            if !l.is_empty() && *l != old_link && old_image.is_empty() && p.image_url.is_none() =>
-        {
+        Some(l) if !l.is_empty() && *l != old_link && (wants_image || wants_runtime) => {
             link::preview(l).await
         }
         _ => link::Preview::default(),
     };
+    let found_runtime = preview.runtime_min;
     let new_map = p.map_url.as_deref().map(v::map_url).transpose()?;
     let moved = new_map.as_ref().is_some_and(|m| *m != old_map);
     // read the place for a new link, or to fill in a location it never had
@@ -756,7 +766,7 @@ async fn update_candidate(
     };
     let runtime_min = match p.runtime_min {
         Some(_) => runtime_of(p.runtime_min)?,
-        None => runtime_min,
+        None => runtime_min.or(found_runtime),
     };
     let memo = match &p.memo {
         Some(x) => v::optional_text(x, "메모", 80)?,
