@@ -62,6 +62,8 @@ pub struct StepFull {
     #[serde(flatten)]
     pub step: Step,
     pub candidates: Vec<Candidate>,
+    /// where they really went, when the day changed it
+    pub actual: Option<Actual>,
 }
 
 /// Everything the planner sees for one course.
@@ -140,6 +142,7 @@ pub async fn full(conn: &mut SqliteConnection, id: &str) -> Result<CourseFull> {
     let course = course(conn, id).await?;
     let steps = steps(conn, id).await?;
     let mut cands = candidates(conn, id).await?;
+    let mut actual = actuals(conn, id).await?;
     let steps = steps
         .into_iter()
         .map(|step| {
@@ -147,12 +150,45 @@ pub async fn full(conn: &mut SqliteConnection, id: &str) -> Result<CourseFull> {
                 cands.drain(..).partition(|c| c.step_id == step.id);
             cands = rest;
             StepFull {
+                actual: actual.remove(&step.id),
                 step,
                 candidates: mine,
             }
         })
         .collect();
     Ok(CourseFull { course, steps })
+}
+
+/// Where they really went at a stop, when the day went its own way.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct Actual {
+    #[serde(skip)]
+    pub step_id: String,
+    /// they did not go anywhere for this stop
+    pub skipped: bool,
+    /// where they went instead (empty when skipped)
+    pub name: String,
+    pub memo: String,
+    pub map_url: String,
+    pub image_url: String,
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
+}
+
+/// The day's changes of a course, by step id.
+pub async fn actuals(
+    conn: &mut SqliteConnection,
+    course_id: &str,
+) -> Result<std::collections::HashMap<String, Actual>> {
+    let rows = sqlx::query_as::<_, Actual>(
+        "SELECT a.step_id, a.skipped, a.name, a.memo, a.map_url, a.image_url, a.lat, a.lng \
+         FROM step_actual a JOIN steps s ON s.id = a.step_id \
+         WHERE s.course_id = ? AND s.deleted_at IS NULL",
+    )
+    .bind(course_id)
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(rows.into_iter().map(|a| (a.step_id.clone(), a)).collect())
 }
 
 /// Step with its course id, for endpoints addressed by step id.

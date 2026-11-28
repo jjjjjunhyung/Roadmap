@@ -1574,3 +1574,152 @@ async fn movie_steps_hold_works_at_one_venue() {
     let (s, _, _) = raw(&app, Method::GET, &poster, vec![], None).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
 }
+
+/// The day as it went: once signed in, a decided stop can be struck through with where they
+/// went instead (or that they skipped it). The plan stays, the archive lists the new place, a
+/// reset forgets it, and "원래대로" undoes it.
+#[tokio::test]
+async fn the_day_can_change_a_decided_stop() {
+    let app = app(Some(KEY)).await;
+    let c = seeded(&app).await;
+    let id = c["id"].as_str().unwrap().to_string();
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/courses/{id}"),
+        Some(json!({ "status": "open" })),
+    )
+    .await;
+    let code = c["share_code"].as_str().unwrap().to_string();
+    let (s0, s1) = (
+        c["steps"][0]["id"].as_str().unwrap().to_string(),
+        c["steps"][1]["id"].as_str().unwrap().to_string(),
+    );
+    let at = |step: &str| format!("/api/archive/courses/{code}/steps/{step}/actual");
+    let (_, set, _) = archive_call(
+        &app,
+        "192.0.2.60",
+        Method::POST,
+        "/api/archive/unlock",
+        Some(json!({ "code": BIRTHDAY })),
+        None,
+    )
+    .await;
+    let cookie = set.unwrap().split(';').next().unwrap().to_string();
+    let ck = Some(cookie.as_str());
+    let change = json!({ "name": "동네 국밥집", "memo": "웨이팅이 너무 길었어" });
+
+    let (s, _, _) = archive_call(
+        &app,
+        "192.0.2.60",
+        Method::PUT,
+        &at(&s0),
+        Some(change.clone()),
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED, "the birthday comes first");
+    let (s, _, _) = archive_call(
+        &app,
+        "192.0.2.60",
+        Method::PUT,
+        &at(&s0),
+        Some(change.clone()),
+        ck,
+    )
+    .await;
+    assert_eq!(
+        s,
+        StatusCode::CONFLICT,
+        "nothing to strike out before it is decided"
+    );
+
+    // decide both stops
+    let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
+    for o in v["open"].as_array().unwrap() {
+        let (sid, cid) = (
+            o["id"].as_str().unwrap(),
+            o["candidates"][0]["id"].as_str().unwrap(),
+        );
+        call(
+            &app,
+            Method::POST,
+            &format!("/api/pick/{code}/steps/{sid}/pick"),
+            Some(json!({ "candidate_id": cid })),
+            None,
+        )
+        .await;
+    }
+
+    let (s, _, v) = archive_call(&app, "192.0.2.60", Method::PUT, &at(&s0), Some(change), ck).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["steps"][0]["picked"]["name"], "장소0-1", "the plan stays");
+    assert_eq!(v["steps"][0]["actual"]["name"], "동네 국밥집");
+    assert_eq!(v["steps"][0]["actual"]["skipped"], false);
+    let (s, _, v) = archive_call(
+        &app,
+        "192.0.2.60",
+        Method::PUT,
+        &at(&s1),
+        Some(json!({ "skipped": true, "memo": "비가 와서" })),
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        (
+            v["steps"][1]["actual"]["skipped"].as_bool(),
+            v["steps"][1]["actual"]["name"].as_str()
+        ),
+        (Some(true), Some(""))
+    );
+    let (s, _, _) = archive_call(
+        &app,
+        "192.0.2.60",
+        Method::PUT,
+        &at(&s1),
+        Some(json!({ "name": " " })),
+        ck,
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "somewhere instead needs a name");
+
+    // everyone with the link sees it; the archive lists where they really went
+    let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
+    assert_eq!(v["steps"][0]["actual"]["memo"], "웨이팅이 너무 길었어");
+    let (_, _, list) =
+        archive_call(&app, "192.0.2.60", Method::GET, "/api/archive", None, ck).await;
+    let mine = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["share_code"] == code.as_str())
+        .unwrap();
+    assert_eq!(
+        (
+            mine["stops"][0]["name"].as_str(),
+            mine["stops"][0]["changed"].as_str()
+        ),
+        (Some("동네 국밥집"), Some("replaced"))
+    );
+    assert_eq!(
+        (
+            mine["stops"][1]["name"].as_str(),
+            mine["stops"][1]["changed"].as_str()
+        ),
+        (Some("장소1-1"), Some("skipped"))
+    );
+    // the planner sees it too
+    let c = plan(&app, Method::GET, &format!("/courses/{id}"), None).await;
+    assert_eq!(c["steps"][0]["actual"]["name"], "동네 국밥집");
+
+    // "원래대로"
+    let (s, _, v) = archive_call(&app, "192.0.2.60", Method::DELETE, &at(&s0), None, ck).await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(v["steps"][0]["actual"].is_null());
+
+    // a reset forgets the day's changes with the picks
+    plan(&app, Method::POST, &format!("/courses/{id}/reset"), None).await;
+    let c = plan(&app, Method::GET, &format!("/courses/{id}"), None).await;
+    assert!(c["steps"][1]["actual"].is_null());
+}

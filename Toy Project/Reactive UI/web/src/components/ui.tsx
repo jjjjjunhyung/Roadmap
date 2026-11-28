@@ -225,12 +225,15 @@ export function Ticket({
   steps,
   sealRef,
   weather,
+  onChange,
 }: {
   date: string;
   steps: StepSummary[];
   sealRef?: Ref<HTMLSpanElement>;
   /** the day's forecast: each stop shows its hour */
   weather?: WeatherReport;
+  /** while fixing the day: each stop offers to record what really happened */
+  onChange?: (s: StepSummary) => void;
 }) {
   const d = formatDate(date);
   return (
@@ -248,20 +251,48 @@ export function Ticket({
       </div>
       <div className="tear" aria-hidden="true" />
       <ol>
-        {steps.map((s) => (
-          <li key={s.id}>
-            <span className="tm">
-              {s.time || "—"}
-              <HourWeather report={weather} time={s.time} />
-            </span>
-            <span className="what">
-              <span className="label">{s.label}</span>
-              <b>{s.picked?.name}</b>
-              {s.picked?.memo && <span className="memo">{s.picked.memo}</span>}
-              {s.picked?.map_url && <MapChip href={s.picked.map_url} />}
-            </span>
-          </li>
-        ))}
+        {steps.map((s) => {
+          const a = s.actual;
+          return (
+            <li key={s.id} className={a ? "changed" : undefined}>
+              <span className="tm">
+                {s.time || "—"}
+                <HourWeather report={weather} time={s.time} />
+              </span>
+              <span className="what">
+                <span className="label">
+                  {s.label}
+                  {a && <i className="ad-lib">{a.skipped ? "안 갔어" : "즉흥 변경"}</i>}
+                </span>
+                {a ? (
+                  <>
+                    {/* the plan stays, crossed out */}
+                    <s className="was">{s.picked?.name}</s>
+                    {!a.skipped && (
+                      <b className="instead">
+                        <i>대신</i>
+                        {a.name}
+                      </b>
+                    )}
+                    {a.memo && <span className="memo">{a.memo}</span>}
+                    {!a.skipped && a.map_url && <MapChip href={a.map_url} />}
+                  </>
+                ) : (
+                  <>
+                    <b>{s.picked?.name}</b>
+                    {s.picked?.memo && <span className="memo">{s.picked.memo}</span>}
+                    {s.picked?.map_url && <MapChip href={s.picked.map_url} />}
+                  </>
+                )}
+                {onChange && s.picked && (
+                  <button type="button" className="fix" onClick={() => onChange(s)}>
+                    {a ? "다시 고치기" : "여기 바뀌었어?"}
+                  </button>
+                )}
+              </span>
+            </li>
+          );
+        })}
       </ol>
       <div className="tear" aria-hidden="true" />
       <div className="foot">

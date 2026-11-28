@@ -101,6 +101,8 @@ pub struct StepSummary {
     /// "fixed" (the planner decided) | "done" (chosen in a game) | "open" (still to choose)
     state: &'static str,
     picked: Option<Place>,
+    /// where they really went (or that they skipped it), when the day changed the plan
+    actual: Option<model::Actual>,
 }
 
 #[derive(Serialize)]
@@ -128,7 +130,7 @@ pub struct PickView {
     open: Vec<OpenStep>,
 }
 
-async fn build(conn: &mut SqliteConnection, code: &str) -> Result<PickView> {
+pub(crate) async fn build(conn: &mut SqliteConnection, code: &str) -> Result<PickView> {
     let course = model::course_by_code(conn, code).await?;
     if course.status == "draft" {
         return Ok(PickView {
@@ -141,6 +143,7 @@ async fn build(conn: &mut SqliteConnection, code: &str) -> Result<PickView> {
     }
     let steps = model::steps(conn, &course.id).await?;
     let cands = model::candidates(conn, &course.id).await?;
+    let mut actual = model::actuals(conn, &course.id).await?;
 
     let summaries = steps
         .iter()
@@ -161,6 +164,8 @@ async fn build(conn: &mut SqliteConnection, code: &str) -> Result<PickView> {
                 label: s.label.clone(),
                 time: s.time.clone(),
                 state,
+                // a change on the day only means something once the stop was decided
+                actual: picked.as_ref().and(actual.remove(&s.id)),
                 picked,
             }
         })

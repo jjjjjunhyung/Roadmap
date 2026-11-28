@@ -47,6 +47,19 @@ export interface Place {
   venue: string | null;
 }
 
+/** Where they really went at a stop when the day changed the plan (the plan itself stays). */
+export interface Actual {
+  /** they did not go anywhere for this stop */
+  skipped: boolean;
+  /** where they went instead ("" when skipped) */
+  name: string;
+  memo: string;
+  map_url: string;
+  image_url: string;
+  lat: number | null;
+  lng: number | null;
+}
+
 export interface StepSummary {
   id: string;
   kind: Kind;
@@ -55,6 +68,8 @@ export interface StepSummary {
   /** fixed: the planner decided (one candidate) · done: chosen in a game · open: still to choose */
   state: "fixed" | "done" | "open";
   picked: Place | null;
+  /** set when the day went differently */
+  actual: Actual | null;
 }
 
 export interface OpenStep {
@@ -123,6 +138,8 @@ export interface Step {
   venue_lat: number | null;
   venue_lng: number | null;
   candidates: Candidate[];
+  /** set when the day went differently */
+  actual: Actual | null;
 }
 
 export interface CourseFull {
@@ -154,6 +171,8 @@ export interface MemoryStop {
   time: string;
   name: string | null;
   image_url: string | null;
+  /** "replaced": name is where they went instead; "skipped": name is the planned place */
+  changed: "replaced" | "skipped" | null;
 }
 
 /** A shared course in the archive (drafts never appear). */
@@ -346,6 +365,25 @@ export const wishApi = {
 };
 
 /** Photos of a course's day, behind the birthday like the archive. */
+/** Changing a decided stop after the fact (signed in with the birthday). */
+export const dayApi = {
+  set: (
+    code: string,
+    stepId: string,
+    body: { skipped?: boolean; name?: string; memo?: string; map_url?: string },
+  ) =>
+    request<PickView>(
+      "PUT",
+      `/archive/courses/${encodeURIComponent(code)}/steps/${stepId}/actual`,
+      { body },
+    ),
+  clear: (code: string, stepId: string) =>
+    request<PickView>(
+      "DELETE",
+      `/archive/courses/${encodeURIComponent(code)}/steps/${stepId}/actual`,
+    ),
+};
+
 export const albumApi = {
   list: (code: string) =>
     request<AlbumPhoto[]>("GET", `/archive/courses/${encodeURIComponent(code)}/photos`),

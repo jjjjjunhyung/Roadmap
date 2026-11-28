@@ -3,6 +3,7 @@
 mod album;
 pub mod archive;
 pub mod backup;
+mod day;
 pub mod error;
 mod link;
 mod model;
@@ -160,6 +161,7 @@ pub fn router(state: AppState, static_dir: Option<&Path>) -> Router {
         .nest("/pick", pick::router())
         .merge(archive::router())
         .merge(album::router())
+        .merge(day::router())
         .merge(wishes::router())
         .fallback(|| async { StatusCode::NOT_FOUND });
 

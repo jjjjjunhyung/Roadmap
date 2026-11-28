@@ -978,3 +978,14 @@
   font-size: 13px;
   cursor: pointer;
 }
+
+/* a stop the day changed: skipped ones crossed out, replacements marked */
+.memory .route .skipped {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--accent);
+}
+.memory .route .replaced {
+  text-decoration: underline dotted var(--accent);
+  text-underline-offset: 3px;
+}

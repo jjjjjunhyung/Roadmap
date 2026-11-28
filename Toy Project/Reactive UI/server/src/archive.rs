@@ -307,9 +307,13 @@ struct Stop {
     label: String,
     kind: String,
     time: String,
-    /// the picked place; null while the step is still to be chosen
+    /// where they went: the picked place, or where they went instead on the day; null while
+    /// the step is still to be chosen
     name: Option<String>,
     image_url: Option<String>,
+    /// "replaced" | "skipped" when the day changed the plan (name is then the new place, or
+    /// still the planned one for a skipped stop)
+    changed: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -332,6 +336,9 @@ struct StopRow {
     time: String,
     name: Option<String>,
     image_url: Option<String>,
+    skipped: Option<bool>,
+    actual_name: Option<String>,
+    actual_image: Option<String>,
 }
 
 async fn list(State(st): State<AppState>, headers: HeaderMap) -> Result<Response> {
@@ -343,9 +350,11 @@ async fn list(State(st): State<AppState>, headers: HeaderMap) -> Result<Response
     .fetch_all(&st.db)
     .await?;
     let rows = sqlx::query_as::<_, StopRow>(
-        "SELECT s.course_id, s.label, s.kind, s.time, c.name, c.image_url FROM steps s \
+        "SELECT s.course_id, s.label, s.kind, s.time, c.name, c.image_url, \
+           a.skipped, a.name AS actual_name, a.image_url AS actual_image FROM steps s \
          JOIN courses k ON k.id = s.course_id \
          LEFT JOIN candidates c ON c.id = s.picked_id AND c.deleted_at IS NULL \
+         LEFT JOIN step_actual a ON a.step_id = s.id AND c.id IS NOT NULL \
          WHERE s.deleted_at IS NULL AND k.deleted_at IS NULL AND k.status != 'draft' \
          ORDER BY s.position, s.rowid",
     )
@@ -365,12 +374,18 @@ async fn list(State(st): State<AppState>, headers: HeaderMap) -> Result<Response
     }
     let mut stops: std::collections::HashMap<String, Vec<Stop>> = Default::default();
     for r in rows {
+        let (name, image_url, changed) = match r.skipped {
+            Some(true) => (r.name, r.image_url, Some("skipped")),
+            Some(false) => (r.actual_name, r.actual_image, Some("replaced")),
+            None => (r.name, r.image_url, None),
+        };
         stops.entry(r.course_id).or_default().push(Stop {
             label: r.label,
             kind: r.kind,
             time: r.time,
-            image_url: r.image_url.filter(|u| !u.is_empty()),
-            name: r.name,
+            image_url: image_url.filter(|u| !u.is_empty()),
+            name,
+            changed,
         });
     }
     let memories: Vec<Memory> = courses

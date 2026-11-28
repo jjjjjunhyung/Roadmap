@@ -448,7 +448,7 @@ function MemoryCard({ m }: { m: Memory }) {
           <b className="ttl">{m.title}</b>
           <span className="route">
             {m.stops.map((s, i) => (
-              <span key={i} className={s.name ? "" : "todo"}>
+              <span key={i} className={s.name ? (s.changed ?? "") : "todo"}>
                 {s.name ?? s.label}
               </span>
             ))}

@@ -295,6 +295,13 @@ async fn reset(State(st): State<AppState>, Path(id): Path<String>) -> Result<Jso
             .execute(&mut *tx)
             .await?;
     }
+    // the day's changes belonged to the old picks
+    sqlx::query(
+        "DELETE FROM step_actual WHERE step_id IN (SELECT id FROM steps WHERE course_id = ?)",
+    )
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
     // fixed steps are picked again right away (model::changed below)
     model::changed(&mut tx, &id).await?;
     model::log(&mut tx, &id, "planner", "course.reset", json!({})).await?;

@@ -448,6 +448,12 @@ function StepEditor(props: {
           {step.picked_by === "planner" ? "정해 둠" : "골랐어"} · {picked.name}
         </p>
       )}
+      {picked && step.actual && (
+        <p className="picked">
+          당일 변경 · {step.actual.skipped ? "안 갔어" : `대신 ${step.actual.name}`}
+          {step.actual.memo && ` (${step.actual.memo})`}
+        </p>
+      )}
       <ul className="cands">
         {step.candidates.map((c, i) => (
           <CandidateRow

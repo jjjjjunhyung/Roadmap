@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { Album } from "../components/Album";
+import { DayChange } from "../components/DayChange";
 import { HolidaySky, StringLights } from "../components/Holiday";
 import { CandidateMap, CourseMap } from "../components/Maps";
 import { WeatherStrip } from "../components/Weather";
@@ -16,6 +17,7 @@ import {
   type Place,
   type StepSummary,
   errorMessage,
+  archiveApi,
   pickApi,
 } from "../lib/api";
 import { useConfig } from "../lib/config";
@@ -48,6 +50,34 @@ function shown(v: PickView): PickView {
   };
 }
 
+/**
+ * The stops as they really went, for the map and the album: a place they went to instead takes
+ * the planned one's spot, a skipped one drops out.
+ */
+function lived(steps: StepSummary[]): StepSummary[] {
+  return steps.map((s) => {
+    const a = s.actual;
+    if (!a || !s.picked) return s;
+    if (a.skipped) return { ...s, picked: null };
+    return {
+      ...s,
+      picked: {
+        ...s.picked,
+        name: a.name,
+        memo: a.memo,
+        map_url: a.map_url,
+        image_url: a.image_url,
+        lat: a.lat,
+        lng: a.lng,
+        link_url: "",
+        starts_at: "",
+        runtime_min: null,
+        venue: null,
+      },
+    };
+  });
+}
+
 function Picker() {
   const { code } = Route.useParams();
   const qc = useQueryClient();
@@ -63,6 +93,15 @@ function Picker() {
   const [morph, setMorph] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [focus, setFocus] = useState<string[]>([]);
+  // fixing the day afterwards is for the two of them: signed in with the birthday
+  const signedIn = useQuery({
+    queryKey: ["archive"],
+    queryFn: archiveApi.list,
+    retry: false,
+    staleTime: 60_000,
+  }).isSuccess;
+  const [fixing, setFixing] = useState(false);
+  const [changing, setChanging] = useState<StepSummary | null>(null);
   const cfg = useConfig();
   const home = !!cfg.data?.archive_digits;
   const wx = useQuery({
@@ -249,9 +288,24 @@ function Picker() {
 
       {v.status === "done" ? (
         <>
-          <Ticket date={v.date} steps={dressed.steps} sealRef={sealRef} weather={wx.data} />
-          <CourseMap steps={v.steps} />
-          <Album code={code} steps={v.steps} />
+          <Ticket
+            date={v.date}
+            steps={dressed.steps}
+            sealRef={sealRef}
+            weather={wx.data}
+            onChange={fixing ? setChanging : undefined}
+          />
+          {signedIn && (
+            <button
+              type="button"
+              className={`btn small ${fixing ? "ink" : "ghost"} fix-day`}
+              onClick={() => setFixing((f) => !f)}
+            >
+              {fixing ? "다 고쳤어" : "당일에 바뀐 곳 고치기"}
+            </button>
+          )}
+          <CourseMap steps={lived(v.steps)} />
+          <Album code={code} steps={lived(v.steps)} />
         </>
       ) : cur && game ? (
         <section className="stage" aria-live="polite" ref={stageRef}>
@@ -319,6 +373,18 @@ function Picker() {
           rerollsLeft={game.luck ? cur.rerolls_left : null}
           onRetry={retry}
           onConfirm={confirm}
+        />
+      )}
+      {changing && (
+        <DayChange
+          code={code}
+          step={changing}
+          onSaved={(next) => {
+            qc.setQueryData(["pick", code], next);
+            void qc.invalidateQueries({ queryKey: ["archive"] });
+            setChanging(null);
+          }}
+          onClose={() => setChanging(null)}
         />
       )}
       <Toast message={toast} onDone={clearToast} />
