@@ -377,7 +377,8 @@ function Picker() {
               <span>직접 고르기</span>
             )}
           </p>
-          {formOf(cur.kind) === "place" && (
+          {/* a blind pick would be spoiled by names on the map */}
+          {formOf(cur.kind) === "place" && cur.game !== "blind" && (
             <CandidateMap
               key={cur.id}
               candidates={shownCur?.candidates ?? cur.candidates}

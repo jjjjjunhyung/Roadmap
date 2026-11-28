@@ -25,7 +25,18 @@ export type GameId =
   | "slot"
   | "ladder"
   | "gacha"
-  | "balance";
+  | "balance"
+  | "blind"
+  | "hearts"
+  | "eliminate"
+  | "rank"
+  | "scratch"
+  | "gift"
+  | "plinko"
+  | "race"
+  | "dart"
+  | "lots"
+  | "crane";
 export type CourseStatus = "draft" | "open" | "done";
 
 export interface Place {

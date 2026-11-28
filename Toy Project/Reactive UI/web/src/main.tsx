@@ -8,6 +8,7 @@ import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "./styles/base.css";
 import "./styles/picker.css";
 import "./styles/games.css";
+import "./styles/games-more.css";
 import "./styles/plan.css";
 import "./styles/archive.css";
 import "./styles/holiday.css";

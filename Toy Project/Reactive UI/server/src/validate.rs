@@ -4,10 +4,31 @@ use crate::error::{Result, bad};
 
 /// Games the web app can play; keep in step with `web/src/games/index.ts`.
 pub const GAMES: &[&str] = &[
-    "worldcup", "swipe", "flip", "roulette", "slot", "ladder", "gacha", "balance",
+    "worldcup",
+    "swipe",
+    "flip",
+    "roulette",
+    "slot",
+    "ladder",
+    "gacha",
+    "balance",
+    "blind",
+    "hearts",
+    "eliminate",
+    "rank",
+    "scratch",
+    "gift",
+    "plinko",
+    "race",
+    "dart",
+    "lots",
+    "crane",
 ];
 /// Games that end on chance and therefore offer "try again".
-pub const LUCK_GAMES: &[&str] = &["flip", "roulette", "slot", "ladder", "gacha", "balance"];
+pub const LUCK_GAMES: &[&str] = &[
+    "flip", "roulette", "slot", "ladder", "gacha", "balance", "scratch", "gift", "plinko", "race",
+    "dart", "lots", "crane",
+];
 /// Step icons; keep in step with `KIND_LABEL` in `web/src/lib/look.ts`.
 pub const KINDS: &[&str] = &[
     "meal", "cafe", "dinner", "drink", "walk", "play", "shop", "photo", "drive", "arcade", "stay",

@@ -435,10 +435,19 @@ function StepEditor(props: {
               value={step.game}
               onChange={(e) => void save({ game: e.target.value as GameId })}
             >
-              {Object.entries(GAMES).map(([id, g]) => (
-                <option key={id} value={id}>
-                  {g.name}
-                </option>
+              {[
+                { name: "직접 고르기", luck: false },
+                { name: "운에 맡기기 (다시 하기 가능)", luck: true },
+              ].map((group) => (
+                <optgroup key={group.name} label={group.name}>
+                  {Object.entries(GAMES)
+                    .filter(([, g]) => g.luck === group.luck)
+                    .map(([id, g]) => (
+                      <option key={id} value={id}>
+                        {g.name}
+                      </option>
+                    ))}
+                </optgroup>
               ))}
             </select>
           </label>
