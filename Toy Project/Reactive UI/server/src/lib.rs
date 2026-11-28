@@ -4,6 +4,7 @@ mod album;
 pub mod archive;
 pub mod backup;
 pub mod error;
+mod link;
 mod model;
 mod naver;
 mod pick;

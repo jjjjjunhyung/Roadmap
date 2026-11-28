@@ -18,7 +18,16 @@ import {
   planApi,
   type PlannerWish,
 } from "../lib/api";
-import { KIND_LABEL, formatDate, placeLine, two } from "../lib/look";
+import {
+  type Form,
+  KIND_GROUPS,
+  KIND_LABEL,
+  formOf,
+  formatDate,
+  placeLine,
+  two,
+} from "../lib/look";
+import { shrink } from "../lib/photo";
 
 export const Route = createFileRoute("/plan/$key/$courseId")({ component: Editor });
 
@@ -288,6 +297,7 @@ function StepEditor(props: {
   const game = GAMES[step.game];
   // one candidate: the planner's decision, shown from the start with no game
   const fixed = step.candidates.length === 1;
+  const form = formOf(step.kind);
   return (
     <article className="pstep">
       <div className="pstep-head">
@@ -346,14 +356,43 @@ function StepEditor(props: {
             value={step.kind}
             onChange={(e) => void save({ kind: e.target.value as Kind })}
           >
-            {Object.entries(KIND_LABEL).map(([k, label]) => (
-              <option key={k} value={k}>
-                {label}
-              </option>
+            {KIND_GROUPS.map((g) => (
+              <optgroup key={g.name} label={g.name}>
+                {g.kinds.map((k) => (
+                  <option key={k} value={k}>
+                    {KIND_LABEL[k]}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </label>
       </div>
+      {form === "work" && (
+        <div className="row2">
+          <label className="field">
+            <span>극장·공연장</span>
+            <input
+              key={step.venue_name}
+              className="input"
+              defaultValue={step.venue_name}
+              maxLength={30}
+              placeholder="예: CGV 용산"
+              onBlur={onBlurSave(step.venue_name, (venue_name) => save({ venue_name }))}
+            />
+          </label>
+          <label className="field">
+            <span>지도 링크</span>
+            <input
+              className="input"
+              defaultValue={step.venue_url}
+              inputMode="url"
+              placeholder="네이버지도 링크 (선택)"
+              onBlur={onBlurSave(step.venue_url, (venue_url) => save({ venue_url }))}
+            />
+          </label>
+        </div>
+      )}
       <label className="field">
         <span>고르는 사람에게 보일 질문</span>
         <input
@@ -414,6 +453,7 @@ function StepEditor(props: {
           <CandidateRow
             key={c.id}
             cand={c}
+            form={form}
             index={i}
             chosen={c.id === step.picked_id}
             api={api}
@@ -423,28 +463,35 @@ function StepEditor(props: {
       </ul>
       {step.candidates.length < 8 && (
         <>
-          <AddCandidate stepId={step.id} api={api} run={run} />
-          <WishPicker step={step} api={api} run={run} wishes={wishes} onUsed={onWishUsed} />
+          <AddCandidate stepId={step.id} form={form} api={api} run={run} />
+          {form === "place" && (
+            <WishPicker step={step} api={api} run={run} wishes={wishes} onUsed={onWishUsed} />
+          )}
         </>
       )}
     </article>
   );
 }
 
+const NAME_LABEL: Record<Form, string> = { place: "장소 이름", work: "제목", free: "이름" };
+
 function CandidateRow({
   cand,
+  form,
   index,
   chosen,
   api,
   run,
 }: {
   cand: Candidate;
+  form: Form;
   index: number;
   chosen: boolean;
   api: Api;
   run: Run;
 }) {
   const save = (body: CandidateInput) => run(api.updateCandidate(cand.id, body));
+  const upload = async (f: File) => run(api.uploadImage(cand.id, await shrink(f, 1600)));
   const [picking, setPicking] = useState(false);
   return (
     <li className={`cand${chosen ? " chosen" : ""}`}>
@@ -462,9 +509,36 @@ function CandidateRow({
           className="input name"
           defaultValue={cand.name}
           maxLength={30}
-          aria-label="장소 이름"
+          aria-label={NAME_LABEL[form]}
           onBlur={onBlurSave(cand.name, (name) => save({ name }))}
         />
+        {form === "work" && (
+          <div className="work-times">
+            <input
+              className="input"
+              type="time"
+              defaultValue={cand.starts_at}
+              aria-label="시작 시간"
+              onBlur={onBlurSave(cand.starts_at, (starts_at) => save({ starts_at }))}
+            />
+            <span className="unit">
+              <input
+                className="input"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={600}
+                defaultValue={cand.runtime_min ?? ""}
+                placeholder="러닝타임"
+                aria-label="러닝타임(분)"
+                onBlur={onBlurSave(String(cand.runtime_min ?? ""), (v) =>
+                  save({ runtime_min: Number(v) || 0 }),
+                )}
+              />
+              <i>분</i>
+            </span>
+          </div>
+        )}
         <input
           className="input"
           defaultValue={cand.memo}
@@ -473,14 +547,26 @@ function CandidateRow({
           aria-label="메모"
           onBlur={onBlurSave(cand.memo, (memo) => save({ memo }))}
         />
-        <input
-          className="input"
-          defaultValue={cand.map_url}
-          placeholder="지도 링크 (선택)"
-          inputMode="url"
-          aria-label="지도 링크"
-          onBlur={onBlurSave(cand.map_url, (map_url) => save({ map_url }))}
-        />
+        {form === "place" && (
+          <input
+            className="input"
+            defaultValue={cand.map_url}
+            placeholder="지도 링크 (선택)"
+            inputMode="url"
+            aria-label="지도 링크"
+            onBlur={onBlurSave(cand.map_url, (map_url) => save({ map_url }))}
+          />
+        )}
+        {form === "work" && (
+          <input
+            className="input"
+            defaultValue={cand.link_url}
+            placeholder="정보·예매 링크 (선택)"
+            inputMode="url"
+            aria-label="정보·예매 링크"
+            onBlur={onBlurSave(cand.link_url, (link_url) => save({ link_url }))}
+          />
+        )}
       </div>
       <button
         className="icon-btn"
@@ -490,7 +576,14 @@ function CandidateRow({
         <Icon d={TRASH} />
       </button>
       {picking && (
-        <PhotoPicker cand={cand} api={api} save={save} onClose={() => setPicking(false)} />
+        <PhotoPicker
+          cand={cand}
+          form={form}
+          api={api}
+          save={save}
+          upload={upload}
+          onClose={() => setPicking(false)}
+        />
       )}
     </li>
   );
@@ -499,23 +592,41 @@ function CandidateRow({
 /** Photos from the candidate's Naver Map link, plus "paste a link" and "no photo". */
 function PhotoPicker(props: {
   cand: Candidate;
+  form: Form;
   api: Api;
   save: (body: CandidateInput) => Promise<boolean>;
+  upload: (f: File) => Promise<boolean>;
   onClose: () => void;
 }) {
-  const { cand, api, save, onClose } = props;
+  const { cand, form, api, save, upload, onClose } = props;
+  const naver = form === "place";
+  const [sending, setSending] = useState(false);
   const q = useQuery({
     queryKey: ["photos", cand.id, cand.map_url],
     queryFn: () => api.photos(cand.id),
     staleTime: 10 * 60_000,
+    enabled: naver,
   });
+  const send = async (f: File | undefined) => {
+    if (!f) return;
+    setSending(true);
+    const ok = await upload(f);
+    setSending(false);
+    if (ok) onClose();
+  };
   const choose = async (image_url: string) => {
     if (await save({ image_url })) onClose();
   };
-  const options: PhotoOption[] = q.data ?? [];
+  const options: PhotoOption[] = (naver && q.data) || [];
   return (
     <div className="photo-pick">
-      {q.isPending ? (
+      {!naver ? (
+        <p className="hint">
+          {form === "work"
+            ? "포스터를 올리거나 포스터 사진 링크를 붙여 줘"
+            : "사진을 올리거나 사진 링크를 붙여 줘"}
+        </p>
+      ) : q.isPending ? (
         <p className="hint">네이버 지도에서 사진을 찾는 중…</p>
       ) : q.isError ? (
         <p className="hint">{errorMessage(q.error)}</p>
@@ -555,6 +666,16 @@ function PhotoPicker(props: {
         }}
       />
       <div className="photo-actions">
+        <label className={`btn small ink upload-btn${sending ? " busy" : ""}`}>
+          {sending ? "올리는 중…" : form === "work" ? "포스터 올리기" : "사진 올리기"}
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            disabled={sending}
+            onChange={(e) => void send(e.currentTarget.files?.[0])}
+          />
+        </label>
         {cand.image_url && (
           <button className="btn small ghost" onClick={() => void choose("")}>
             사진 빼기
@@ -568,34 +689,96 @@ function PhotoPicker(props: {
   );
 }
 
-function AddCandidate({ stepId, api, run }: { stepId: string; api: Api; run: Run }) {
+function AddCandidate(props: { stepId: string; form: Form; api: Api; run: Run }) {
+  const { stepId, form, api, run } = props;
   const [name, setName] = useState("");
   const [memo, setMemo] = useState("");
   const [mapUrl, setMapUrl] = useState("");
+  const [link, setLink] = useState("");
+  const [startsAt, setStartsAt] = useState("");
+  const [runtime, setRuntime] = useState("");
   const [busy, setBusy] = useState(false);
+  const body: CandidateInput =
+    form === "work"
+      ? { name, memo, link_url: link, starts_at: startsAt, runtime_min: Number(runtime) || 0 }
+      : form === "free"
+        ? { name, memo }
+        : { name, memo, map_url: mapUrl };
+  // a work's page can give its title
+  const ready = form === "work" ? !!(name.trim() || link.trim()) : !!name.trim();
+  const working =
+    form === "work" && link.trim()
+      ? "제목·포스터 찾는 중…"
+      : form === "place" && mapUrl.includes("naver")
+        ? "사진 찾는 중…"
+        : "추가하는 중…";
   return (
     <form
       className="add-cand"
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
-        if (await run(api.addCandidate(stepId, { name, memo, map_url: mapUrl }))) {
+        if (await run(api.addCandidate(stepId, body))) {
           setName("");
           setMemo("");
           setMapUrl("");
+          setLink("");
+          setStartsAt("");
+          setRuntime("");
         }
         setBusy(false);
       }}
     >
+      {form === "work" && (
+        <input
+          className="input"
+          value={link}
+          onChange={(e) => setLink(e.target.value)}
+          placeholder="왓챠피디아·NOL 티켓 링크 (붙이면 제목·포스터 자동)"
+          inputMode="url"
+          aria-label="정보·예매 링크"
+        />
+      )}
       <input
         className="input"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="후보 장소 이름"
+        placeholder={
+          form === "work"
+            ? "제목 (링크가 있으면 비워도 돼)"
+            : form === "free"
+              ? "후보 이름 (예: 집에서 파스타 만들기)"
+              : "후보 장소 이름"
+        }
         maxLength={30}
-        aria-label="후보 장소 이름"
-        required
+        aria-label={NAME_LABEL[form]}
+        required={form !== "work"}
       />
+      {form === "work" && (
+        <div className="work-times">
+          <input
+            className="input"
+            type="time"
+            value={startsAt}
+            onChange={(e) => setStartsAt(e.target.value)}
+            aria-label="시작 시간"
+          />
+          <span className="unit">
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={600}
+              value={runtime}
+              onChange={(e) => setRuntime(e.target.value)}
+              placeholder="러닝타임"
+              aria-label="러닝타임(분)"
+            />
+            <i>분</i>
+          </span>
+        </div>
+      )}
       <input
         className="input"
         value={memo}
@@ -604,16 +787,18 @@ function AddCandidate({ stepId, api, run }: { stepId: string; api: Api; run: Run
         maxLength={80}
         aria-label="메모"
       />
-      <input
-        className="input"
-        value={mapUrl}
-        onChange={(e) => setMapUrl(e.target.value)}
-        placeholder="카카오맵·네이버지도 링크 (선택)"
-        inputMode="url"
-        aria-label="지도 링크"
-      />
-      <button className="btn small ink" disabled={busy || !name.trim()}>
-        {busy ? (mapUrl.includes("naver") ? "사진 찾는 중…" : "추가하는 중…") : "후보 추가"}
+      {form === "place" && (
+        <input
+          className="input"
+          value={mapUrl}
+          onChange={(e) => setMapUrl(e.target.value)}
+          placeholder="카카오맵·네이버지도 링크 (선택)"
+          inputMode="url"
+          aria-label="지도 링크"
+        />
+      )}
+      <button className="btn small ink" disabled={busy || !ready}>
+        {busy ? working : "후보 추가"}
       </button>
     </form>
   );

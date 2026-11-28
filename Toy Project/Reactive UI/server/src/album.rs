@@ -44,6 +44,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/archive/photos/{id}", get(full).delete(remove))
         .route("/archive/photos/{id}/thumb", get(thumb))
+        .route("/images/{id}", get(card_image))
 }
 
 #[derive(Serialize, sqlx::FromRow)]
@@ -101,8 +102,8 @@ fn jpeg(img: &DynamicImage, quality: u8) -> image::ImageResult<Vec<u8>> {
     Ok(out)
 }
 
-/// Decodes (upright, within sane limits) and re-encodes: the kept photo and its thumbnail.
-fn process(bytes: &[u8]) -> Result<Processed> {
+/// Decodes a photo upright, within sane limits. Only pixels survive: no metadata.
+fn decode(bytes: &[u8]) -> Result<DynamicImage> {
     let unreadable = || bad("사진으로 읽을 수 없어. JPG나 PNG 사진으로 올려 줘");
     let mut reader = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
@@ -118,6 +119,21 @@ fn process(bytes: &[u8]) -> Result<Processed> {
     if let Some(o) = orientation {
         img.apply_orientation(o);
     }
+    Ok(img)
+}
+
+/// A picture for a candidate's card (a poster, a photo for a date at home): at most 960 px.
+pub(crate) fn card_picture(bytes: &[u8]) -> Result<Vec<u8>> {
+    let mut img = decode(bytes)?;
+    if img.width().max(img.height()) > 960 {
+        img = img.resize(960, 960, FilterType::CatmullRom);
+    }
+    jpeg(&img, 84).map_err(|e| AppError::Internal(e.into()))
+}
+
+/// Decodes and re-encodes: the kept photo and its thumbnail.
+fn process(bytes: &[u8]) -> Result<Processed> {
+    let mut img = decode(bytes)?;
     if img.width().max(img.height()) > FULL {
         img = img.resize(FULL, FULL, FilterType::CatmullRom);
     }
@@ -226,6 +242,25 @@ async fn thumb(
 ) -> Result<Response> {
     archive::require(&st, &headers)?;
     Ok(image_response(bytes_of(&st, &id, true).await?))
+}
+
+/// A candidate's uploaded picture (a poster, a photo for a date at home). Public like the
+/// candidate itself; each upload has its own address, so it may be cached for good.
+async fn card_image(State(st): State<AppState>, Path(id): Path<String>) -> Result<Response> {
+    let bytes = sqlx::query_scalar::<_, Vec<u8>>("SELECT bytes FROM candidate_images WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&st.db)
+        .await?
+        .ok_or(AppError::NotFound("사진을 찾을 수 없어"))?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/jpeg"),
+            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 /// Deleting a photo removes it for good (not a soft delete: it is personal).

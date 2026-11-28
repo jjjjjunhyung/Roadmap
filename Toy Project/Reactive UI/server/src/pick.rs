@@ -49,20 +49,47 @@ pub struct Place {
     image_url: String,
     lat: Option<f64>,
     lng: Option<f64>,
+    /// a work's info or booking page
+    link_url: String,
+    /// a work's start time, HH:MM or ""
+    starts_at: String,
+    runtime_min: Option<i64>,
+    /// where a work is on (the step's theater); its map link and location are the candidate's
+    venue: Option<String>,
 }
 
-impl From<&Candidate> for Place {
-    fn from(c: &Candidate) -> Self {
+impl Place {
+    fn of(c: &Candidate, s: &model::Step) -> Self {
+        let at_venue = validate::form(&s.kind) == "work";
+        let venue = Some(s.venue_name.clone()).filter(|v| at_venue && !v.is_empty());
+        // a work step's theater is where every candidate is on
+        let theater = at_venue && (!s.venue_url.is_empty() || s.venue_lat.is_some());
+        let (map_url, lat, lng) = if theater {
+            (s.venue_url.clone(), s.venue_lat, s.venue_lng)
+        } else {
+            (c.map_url.clone(), c.lat, c.lng)
+        };
         Place {
             id: c.id.clone(),
             name: c.name.clone(),
             memo: c.memo.clone(),
-            map_url: c.map_url.clone(),
+            map_url,
             image_url: c.image_url.clone(),
-            lat: c.lat,
-            lng: c.lng,
+            lat,
+            lng,
+            link_url: c.link_url.clone(),
+            starts_at: c.starts_at.clone(),
+            runtime_min: c.runtime_min,
+            venue,
         }
     }
+}
+
+/// The theater of a movie, show or exhibition step.
+#[derive(Serialize)]
+pub struct Venue {
+    name: String,
+    map_url: String,
 }
 
 #[derive(Serialize)]
@@ -85,6 +112,8 @@ pub struct OpenStep {
     time: String,
     game: String,
     rerolls_left: i64,
+    /// a movie, show or exhibition step's theater
+    venue: Option<Venue>,
     candidates: Vec<Place>,
 }
 
@@ -120,7 +149,7 @@ async fn build(conn: &mut SqliteConnection, code: &str) -> Result<PickView> {
                 .picked_id
                 .as_ref()
                 .and_then(|pid| cands.iter().find(|c| &c.id == pid))
-                .map(Place::from);
+                .map(|c| Place::of(c, s));
             let state = match (&picked, s.picked_by.as_deref()) {
                 (None, _) => "open",
                 (Some(_), Some("planner")) => "fixed",
@@ -154,10 +183,16 @@ async fn build(conn: &mut SqliteConnection, code: &str) -> Result<PickView> {
                 } else {
                     0
                 },
+                venue: (validate::form(&s.kind) == "work"
+                    && !(s.venue_name.is_empty() && s.venue_url.is_empty()))
+                .then(|| Venue {
+                    name: s.venue_name.clone(),
+                    map_url: s.venue_url.clone(),
+                }),
                 candidates: cands
                     .iter()
                     .filter(|c| c.step_id == s.id)
-                    .map(Place::from)
+                    .map(|c| Place::of(c, s))
                     .collect(),
             }
         })

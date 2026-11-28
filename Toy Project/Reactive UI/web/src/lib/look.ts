@@ -25,11 +25,63 @@ export const two = (n: number) => String(n + 1).padStart(2, "0");
 export const KIND_LABEL: Record<Kind, string> = {
   meal: "식사",
   cafe: "카페",
-  play: "활동",
   dinner: "저녁",
   drink: "술 한잔",
   walk: "산책",
+  play: "활동",
+  shop: "쇼핑",
+  photo: "사진",
+  drive: "드라이브",
+  arcade: "오락",
+  stay: "호캉스",
+  movie: "영화",
+  show: "공연",
+  exhibit: "전시",
+  home: "집 데이트",
 };
+
+/**
+ * What a step's candidates are: places on the map (a map link fills photo and location), works
+ * (a movie, show or exhibition: one theater for the step, each candidate a title with a time) or
+ * free (a date at home: a name, a note and a picture). Mirrors `form` in the server's validate.rs.
+ */
+export type Form = "place" | "work" | "free";
+export function formOf(kind: Kind): Form {
+  return kind === "movie" || kind === "show" || kind === "exhibit"
+    ? "work"
+    : kind === "home"
+      ? "free"
+      : "place";
+}
+
+/** Icon groups for the planner's menu. */
+export const KIND_GROUPS: { name: string; kinds: Kind[] }[] = [
+  { name: "장소", kinds: ["meal", "cafe", "dinner", "drink", "walk", "play", "shop", "photo"] },
+  { name: "장소 · 더", kinds: ["drive", "arcade", "stay"] },
+  { name: "작품 (극장 하나)", kinds: ["movie", "show", "exhibit"] },
+  { name: "자유", kinds: ["home"] },
+];
+
+/** "2시간 17분", "45분" */
+export function runtimeText(min: number) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h && m ? `${h}시간 ${m}분` : h ? `${h}시간` : `${m}분`;
+}
+
+/** A work's time on a card: "19:20 · 2시간 17분" (with its theater when asked). */
+export function workLine(
+  p: { starts_at: string; runtime_min: number | null; venue: string | null },
+  withVenue = false,
+) {
+  return [
+    withVenue ? p.venue : null,
+    p.starts_at || null,
+    p.runtime_min ? runtimeText(p.runtime_min) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 /** "2026-12-24" → { md: "12.24", dow: "Thu" } */
 export function formatDate(iso: string) {

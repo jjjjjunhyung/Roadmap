@@ -32,6 +32,11 @@ pub struct Step {
     pub picked_at: Option<String>,
     /// "picker" (chosen in a game) or "planner" (a single candidate: fixed)
     pub picked_by: Option<String>,
+    /// where a movie, show or exhibition step happens (one theater for every candidate)
+    pub venue_name: String,
+    pub venue_url: String,
+    pub venue_lat: Option<f64>,
+    pub venue_lng: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, FromRow)]
@@ -45,6 +50,11 @@ pub struct Candidate {
     pub image_url: String,
     pub lat: Option<f64>,
     pub lng: Option<f64>,
+    /// a work's info or booking page
+    pub link_url: String,
+    /// a work's start time, HH:MM or ""
+    pub starts_at: String,
+    pub runtime_min: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -71,12 +81,12 @@ macro_rules! course_cols {
 }
 macro_rules! step_cols {
     () => {
-        "id, position, kind, label, title, time, game, rerolls, rerolls_used, picked_id, picked_at, picked_by"
+        "id, position, kind, label, title, time, game, rerolls, rerolls_used, picked_id, picked_at, picked_by, venue_name, venue_url, venue_lat, venue_lng"
     };
 }
 macro_rules! cand_cols {
     () => {
-        "c.id, c.step_id, c.position, c.name, c.memo, c.map_url, c.image_url, c.lat, c.lng"
+        "c.id, c.step_id, c.position, c.name, c.memo, c.map_url, c.image_url, c.lat, c.lng, c.link_url, c.starts_at, c.runtime_min"
     };
 }
 

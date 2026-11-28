@@ -460,3 +460,42 @@ a.btn {
 .wp-body .wp-used {
   color: var(--accent);
 }
+
+/* a work's start time and running time side by side */
+.work-times {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 8px;
+}
+.work-times .input[type="time"] {
+  min-width: 0;
+  padding-right: 8px;
+}
+.unit {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+.unit .input {
+  width: 100%;
+  padding-right: 30px;
+}
+.unit i {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-style: normal;
+  font-size: 13px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.upload-btn {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.upload-btn.busy {
+  opacity: 0.6;
+  cursor: default;
+}

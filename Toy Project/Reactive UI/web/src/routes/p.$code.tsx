@@ -1,13 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { Album } from "../components/Album";
 import { HolidaySky, StringLights } from "../components/Holiday";
 import { CandidateMap, CourseMap } from "../components/Maps";
 import { WeatherStrip } from "../components/Weather";
-import { Itinerary, Masthead, ResultSheet, Ticket, Toast, Tile } from "../components/ui";
+import { Itinerary, MapChip, Masthead, ResultSheet, Ticket, Toast, Tile } from "../components/ui";
 import { GAMES } from "../games";
 import {
   ApiError,
@@ -20,7 +20,7 @@ import {
 } from "../lib/api";
 import { useConfig } from "../lib/config";
 import { accent, burst, haptic, reducedMotion, sfx, viewTransition } from "../lib/feel";
-import { aura } from "../lib/look";
+import { aura, formOf, workLine } from "../lib/look";
 
 export const Route = createFileRoute("/p/$code")({ component: Picker });
 
@@ -31,6 +31,21 @@ function applyPick(v: PickView, stepId: string, place: Place): PickView {
   );
   const open = v.open.filter((s) => s.id !== stepId);
   return { ...v, steps, open, status: open.length === 0 ? "done" : v.status };
+}
+
+/** A work's time (and, once picked, its theater) in front of its note, for cards and the ticket. */
+function withWork(p: Place, withVenue: boolean): Place {
+  const line = workLine(p, withVenue);
+  return line ? { ...p, memo: [line, p.memo].filter(Boolean).join(" · ") } : p;
+}
+
+/** The view as shown: works carry their times. The cache keeps the server's own view. */
+function shown(v: PickView): PickView {
+  return {
+    ...v,
+    steps: v.steps.map((s) => (s.picked ? { ...s, picked: withWork(s.picked, true) } : s)),
+    open: v.open.map((o) => ({ ...o, candidates: o.candidates.map((c) => withWork(c, false)) })),
+  };
 }
 
 function Picker() {
@@ -62,6 +77,8 @@ function Picker() {
   const clearToast = useCallback(() => setToast(null), []);
 
   const v = q.data;
+  const view = useMemo(() => (v ? shown(v) : undefined), [v]);
+  const shownCur = view?.open.find((s) => s.id === playing) ?? null;
   // the step being played; gone (picked elsewhere, or reloaded) means back to the day
   const cur = v?.open.find((s) => s.id === playing) ?? null;
   const indexOf = useCallback(
@@ -135,7 +152,9 @@ function Picker() {
         setAttempt(0);
         setFocus([]);
         setPlaying(null);
-        qc.setQueryData<PickView>(["pick", code], applyPick(v, stepId, place));
+        // the cache keeps the server's place, not the card's dressed-up copy
+        const raw = cur.candidates.find((c) => c.id === place.id) ?? place;
+        qc.setQueryData<PickView>(["pick", code], applyPick(v, stepId, raw));
       }),
     );
     toStage();
@@ -184,6 +203,8 @@ function Picker() {
     );
   }
   const holiday = cfg.data?.theme === "holiday";
+  // what the cards and the ticket show (works with their times)
+  const dressed = view ?? v;
   const look = holiday ? (
     <>
       <HolidaySky />
@@ -224,11 +245,11 @@ function Picker() {
         }
       />
       <WeatherStrip report={wx.data} />
-      <Itinerary steps={v.steps} morph={morph} playing={cur?.id ?? null} />
+      <Itinerary steps={dressed.steps} morph={morph} playing={cur?.id ?? null} />
 
       {v.status === "done" ? (
         <>
-          <Ticket date={v.date} steps={v.steps} sealRef={sealRef} weather={wx.data} />
+          <Ticket date={v.date} steps={dressed.steps} sealRef={sealRef} weather={wx.data} />
           <CourseMap steps={v.steps} />
           <Album code={code} steps={v.steps} />
         </>
@@ -247,6 +268,12 @@ function Picker() {
               )}
             </div>
             <h2>{cur.title}</h2>
+            {cur.venue && (
+              <p className="venue-line">
+                <span>{cur.venue.name || "극장"}</span>
+                {cur.venue.map_url && <MapChip href={cur.venue.map_url} />}
+              </p>
+            )}
           </div>
           <p className="note">
             <span>{game.name}</span>
@@ -258,7 +285,14 @@ function Picker() {
               <span>직접 고르기</span>
             )}
           </p>
-          <CandidateMap key={cur.id} candidates={cur.candidates} indexOf={indexOf} focus={focus} />
+          {formOf(cur.kind) === "place" && (
+            <CandidateMap
+              key={cur.id}
+              candidates={shownCur?.candidates ?? cur.candidates}
+              indexOf={indexOf}
+              focus={focus}
+            />
+          )}
           <div className="game">
             <game.Component
               key={`${cur.id}-${attempt}`}
@@ -272,7 +306,7 @@ function Picker() {
         </section>
       ) : (
         <section className="stage" aria-live="polite" ref={stageRef}>
-          <Day steps={v.steps} open={v.open} onPlay={play} />
+          <Day steps={dressed.steps} open={dressed.open} onPlay={play} />
         </section>
       )}
 

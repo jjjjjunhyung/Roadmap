@@ -8,7 +8,36 @@ pub const GAMES: &[&str] = &[
 ];
 /// Games that end on chance and therefore offer "try again".
 pub const LUCK_GAMES: &[&str] = &["flip", "roulette", "slot", "ladder", "gacha", "balance"];
-pub const KINDS: &[&str] = &["meal", "cafe", "play", "dinner", "drink", "walk"];
+/// Step icons; keep in step with `KIND_LABEL` in `web/src/lib/look.ts`.
+pub const KINDS: &[&str] = &[
+    "meal", "cafe", "dinner", "drink", "walk", "play", "shop", "photo", "drive", "arcade", "stay",
+    "movie", "show", "exhibit", "home",
+];
+
+/// What a step's candidates are: "place" (somewhere on the map, from a map link), "work" (a
+/// movie, show or exhibition: one venue for the step, each candidate a title with a time) or
+/// "free" (a date at home: just a name, a note and a picture).
+pub fn form(kind: &str) -> &'static str {
+    match kind {
+        "movie" | "show" | "exhibit" => "work",
+        "home" => "free",
+        _ => "place",
+    }
+}
+
+/// Running time in minutes, 1 to 600.
+pub fn runtime(value: i64) -> Result<i64> {
+    if (1..=600).contains(&value) {
+        Ok(value)
+    } else {
+        Err(bad("러닝타임은 1~600분으로 적어 줘"))
+    }
+}
+
+/// Empty, or an http(s) link without spaces: an info or booking page.
+pub fn link(value: &str) -> Result<String> {
+    map_url(value).map_err(|_| bad("링크는 https:// 로 시작하는 주소를 붙여 줘"))
+}
 
 pub fn text(value: &str, field: &str, max: usize) -> Result<String> {
     let v = value.trim();
@@ -114,6 +143,20 @@ pub fn image_url(value: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kinds_have_a_form() {
+        assert_eq!(form("movie"), "work");
+        assert_eq!(form("exhibit"), "work");
+        assert_eq!(form("home"), "free");
+        assert_eq!(form("meal"), "place");
+        assert!(
+            KINDS
+                .iter()
+                .all(|k| ["place", "work", "free"].contains(&form(k)))
+        );
+        assert!(runtime(0).is_err() && runtime(137).is_ok() && runtime(601).is_err());
+    }
 
     #[test]
     fn luck_games_are_games() {

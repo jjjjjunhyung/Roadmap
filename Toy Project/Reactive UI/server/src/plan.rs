@@ -3,7 +3,8 @@
 
 use axum::{
     Json, Router,
-    extract::{Path, Request, State},
+    body::Bytes,
+    extract::{DefaultBodyLimit, Path, Request, State},
     http::StatusCode,
     middleware::{self, Next},
     response::Response,
@@ -14,8 +15,9 @@ use serde_json::json;
 use sqlx::FromRow;
 
 use crate::{
-    AppState,
+    AppState, album,
     error::{AppError, Result, bad},
+    link,
     model::{self, CourseFull},
     naver, validate as v,
 };
@@ -35,6 +37,10 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/candidates/{id}", patch(update_candidate))
         .route("/candidates/{id}", delete(remove_candidate))
         .route("/candidates/{id}/photos", get(candidate_photos))
+        .route(
+            "/candidates/{id}/image",
+            post(upload_candidate_image).layer(DefaultBodyLimit::max(15 * 1024 * 1024)),
+        )
         .merge(crate::archive::planner_router())
         .merge(crate::backup::planner_router())
         .merge(crate::wishes::planner_router())
@@ -330,6 +336,10 @@ struct StepInput {
     time: Option<String>,
     game: Option<String>,
     rerolls: Option<i64>,
+    /// the theater of a movie, show or exhibition step: a map link (its name and location are
+    /// read from it) and a name the planner may type over
+    venue_url: Option<String>,
+    venue_name: Option<String>,
 }
 
 struct StepValues {
@@ -424,6 +434,24 @@ async fn update_step(
     Path(step_id): Path<String>,
     Json(p): Json<StepInput>,
 ) -> Result<Json<CourseFull>> {
+    // a new venue link is read before the transaction: the Naver lookup is a network call
+    let venue = match p.venue_url.as_deref() {
+        Some(u) => {
+            let u = v::map_url(u)?;
+            let place = if u.is_empty() {
+                naver::Place::default()
+            } else {
+                naver::place(&u).await
+            };
+            Some((u, place))
+        }
+        None => None,
+    };
+    let typed_venue = p
+        .venue_name
+        .as_deref()
+        .map(|n| v::optional_text(n, "장소 이름", 30))
+        .transpose()?;
     let mut tx = st.db.begin().await?;
     let course_id = model::step_course(&mut tx, &step_id).await?;
     let cur = model::steps(&mut tx, &course_id)
@@ -431,6 +459,17 @@ async fn update_step(
         .into_iter()
         .find(|s| s.id == step_id)
         .ok_or(AppError::NotFound("단계를 찾을 수 없어"))?;
+    let (venue_url, venue_lat, venue_lng, read_name) = match venue {
+        Some((u, place)) if u != cur.venue_url || cur.venue_lat.is_none() => {
+            let (lat, lng) = place.at.unzip();
+            (u, lat, lng, place.name)
+        }
+        _ => (cur.venue_url.clone(), cur.venue_lat, cur.venue_lng, None),
+    };
+    let venue_name = typed_venue
+        .filter(|n| !n.is_empty() || p.venue_url.is_none())
+        .or(read_name)
+        .unwrap_or_else(|| cur.venue_name.clone());
     let vals = step_values(
         &p,
         StepValues {
@@ -442,16 +481,23 @@ async fn update_step(
             rerolls: cur.rerolls,
         },
     )?;
-    sqlx::query("UPDATE steps SET kind = ?, label = ?, title = ?, time = ?, game = ?, rerolls = ? WHERE id = ?")
-        .bind(&vals.kind)
-        .bind(&vals.label)
-        .bind(&vals.title)
-        .bind(&vals.time)
-        .bind(&vals.game)
-        .bind(vals.rerolls)
-        .bind(&step_id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE steps SET kind = ?, label = ?, title = ?, time = ?, game = ?, rerolls = ?, \
+         venue_name = ?, venue_url = ?, venue_lat = ?, venue_lng = ? WHERE id = ?",
+    )
+    .bind(&vals.kind)
+    .bind(&vals.label)
+    .bind(&vals.title)
+    .bind(&vals.time)
+    .bind(&vals.game)
+    .bind(vals.rerolls)
+    .bind(&venue_name)
+    .bind(&venue_url)
+    .bind(venue_lat)
+    .bind(venue_lng)
+    .bind(&step_id)
+    .execute(&mut *tx)
+    .await?;
     model::changed(&mut tx, &course_id).await?;
     model::log(
         &mut tx,
@@ -537,9 +583,27 @@ struct CandidateInput {
     name: Option<String>,
     memo: Option<String>,
     map_url: Option<String>,
-    /// Photo for the card. On add, left out or "" = fill from a Naver Map link. On update,
-    /// "" = no photo; left out = keep it, or refill when the map link changes.
+    /// Photo for the card. On add, left out or "" = fill from a Naver Map link (or a work's
+    /// page). On update, "" = no photo; left out = keep it, or refill when the link changes.
     image_url: Option<String>,
+    /// a work's info or booking page; on add its title and poster fill what was left out
+    link_url: Option<String>,
+    /// a work's start time, HH:MM ("" clears it)
+    starts_at: Option<String>,
+    /// a work's running time in minutes (0 clears it)
+    runtime_min: Option<i64>,
+}
+
+fn runtime_of(m: Option<i64>) -> Result<Option<i64>> {
+    match m {
+        None | Some(0) => Ok(None),
+        Some(m) => v::runtime(m).map(Some),
+    }
+}
+
+/// An uploaded picture's id, from the address it is served at.
+fn uploaded(image_url: &str) -> Option<&str> {
+    image_url.strip_prefix("/api/images/")
 }
 
 async fn add_candidate(
@@ -547,14 +611,36 @@ async fn add_candidate(
     Path(step_id): Path<String>,
     Json(p): Json<CandidateInput>,
 ) -> Result<(StatusCode, Json<CourseFull>)> {
-    let name = v::text(p.name.as_deref().unwrap_or(""), "장소 이름", 30)?;
     let memo = v::optional_text(p.memo.as_deref().unwrap_or(""), "메모", 80)?;
     let map_url = v::map_url(p.map_url.as_deref().unwrap_or(""))?;
-    // the Naver lookup is a network call: do it before taking the write lock
+    let link_url = v::link(p.link_url.as_deref().unwrap_or(""))?;
+    let starts_at = v::time(p.starts_at.as_deref().unwrap_or(""))?;
+    let runtime_min = runtime_of(p.runtime_min)?;
+    let typed = p.name.as_deref().map(str::trim).filter(|n| !n.is_empty());
+    let chosen = p
+        .image_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|x| !x.is_empty());
+    // network calls before taking the write lock: the place behind a map link, and the title and
+    // poster behind a work's page
     let place = naver::place(&map_url).await;
-    let image_url = match p.image_url.as_deref().map(str::trim) {
-        Some(x) if !x.is_empty() => v::image_url(x)?,
-        _ => place.first_photo(),
+    let preview = if !link_url.is_empty() && (typed.is_none() || chosen.is_none()) {
+        link::preview(&link_url).await
+    } else {
+        link::Preview::default()
+    };
+    let name = match typed.map(str::to_owned).or(preview.title) {
+        Some(n) => v::text(&n, "이름", 30)?,
+        None if link_url.is_empty() => return Err(bad("이름을 입력해 줘")),
+        None => return Err(bad("링크에서 제목을 찾지 못했어. 제목을 직접 적어 줘")),
+    };
+    let image_url = match chosen {
+        Some(x) => v::image_url(x)?,
+        None => Some(place.first_photo())
+            .filter(|p| !p.is_empty())
+            .or(preview.image)
+            .unwrap_or_default(),
     };
     let (lat, lng) = place.at.unzip();
     let mut tx = st.db.begin().await?;
@@ -575,7 +661,8 @@ async fn add_candidate(
     .fetch_one(&mut *tx)
     .await?;
     sqlx::query(
-        "INSERT INTO candidates (step_id, position, name, memo, map_url, image_url, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO candidates (step_id, position, name, memo, map_url, image_url, lat, lng, \
+         link_url, starts_at, runtime_min) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&step_id)
     .bind(next)
@@ -585,6 +672,9 @@ async fn add_candidate(
     .bind(&image_url)
     .bind(lat)
     .bind(lng)
+    .bind(&link_url)
+    .bind(&starts_at)
+    .bind(runtime_min)
     .execute(&mut *tx)
     .await?;
     model::changed(&mut tx, &course_id).await?;
@@ -607,13 +697,24 @@ async fn update_candidate(
     Json(p): Json<CandidateInput>,
 ) -> Result<Json<CourseFull>> {
     // Work out photo and location before the transaction: the Naver lookup is a network call.
-    type Old = (String, String, Option<f64>, Option<f64>);
-    let (old_map, old_image, old_lat, old_lng): Old =
-        sqlx::query_as("SELECT map_url, image_url, lat, lng FROM candidates WHERE id = ?")
-            .bind(&cand_id)
-            .fetch_optional(&st.db)
-            .await?
-            .ok_or(AppError::NotFound("후보를 찾을 수 없어"))?;
+    type Old = (String, String, Option<f64>, Option<f64>, String);
+    let (old_map, old_image, old_lat, old_lng, old_link): Old = sqlx::query_as(
+        "SELECT map_url, image_url, lat, lng, link_url FROM candidates WHERE id = ?",
+    )
+    .bind(&cand_id)
+    .fetch_optional(&st.db)
+    .await?
+    .ok_or(AppError::NotFound("후보를 찾을 수 없어"))?;
+    let new_link = p.link_url.as_deref().map(v::link).transpose()?;
+    // a work's new page may bring the poster it never had
+    let preview = match &new_link {
+        Some(l)
+            if !l.is_empty() && *l != old_link && old_image.is_empty() && p.image_url.is_none() =>
+        {
+            link::preview(l).await
+        }
+        _ => link::Preview::default(),
+    };
     let new_map = p.map_url.as_deref().map(v::map_url).transpose()?;
     let moved = new_map.as_ref().is_some_and(|m| *m != old_map);
     // read the place for a new link, or to fill in a location it never had
@@ -629,7 +730,7 @@ async fn update_candidate(
             .as_ref()
             .map(naver::Place::first_photo)
             .unwrap_or_default(),
-        None => old_image,
+        None => preview.image.unwrap_or_else(|| old_image.clone()),
     };
     let (lat, lng) = match &place {
         Some(pl) => pl.at.unzip(),
@@ -637,14 +738,25 @@ async fn update_candidate(
     };
     let mut tx = st.db.begin().await?;
     let (course_id, _) = model::candidate_owner(&mut tx, &cand_id).await?;
-    let (name, memo, map_url): (String, String, String) =
-        sqlx::query_as("SELECT name, memo, map_url FROM candidates WHERE id = ?")
-            .bind(&cand_id)
-            .fetch_one(&mut *tx)
-            .await?;
+    type Kept = (String, String, String, String, Option<i64>);
+    let (name, memo, map_url, starts_at, runtime_min): Kept = sqlx::query_as(
+        "SELECT name, memo, map_url, starts_at, runtime_min FROM candidates WHERE id = ?",
+    )
+    .bind(&cand_id)
+    .fetch_one(&mut *tx)
+    .await?;
     let name = match &p.name {
-        Some(x) => v::text(x, "장소 이름", 30)?,
+        Some(x) => v::text(x, "이름", 30)?,
         None => name,
+    };
+    let link_url = new_link.unwrap_or(old_link);
+    let starts_at = match &p.starts_at {
+        Some(x) => v::time(x)?,
+        None => starts_at,
+    };
+    let runtime_min = match p.runtime_min {
+        Some(_) => runtime_of(p.runtime_min)?,
+        None => runtime_min,
     };
     let memo = match &p.memo {
         Some(x) => v::optional_text(x, "메모", 80)?,
@@ -655,7 +767,8 @@ async fn update_candidate(
         None => map_url,
     };
     sqlx::query(
-        "UPDATE candidates SET name = ?, memo = ?, map_url = ?, image_url = ?, lat = ?, lng = ? WHERE id = ?",
+        "UPDATE candidates SET name = ?, memo = ?, map_url = ?, image_url = ?, lat = ?, lng = ?, \
+         link_url = ?, starts_at = ?, runtime_min = ? WHERE id = ?",
     )
     .bind(&name)
     .bind(&memo)
@@ -663,9 +776,19 @@ async fn update_candidate(
     .bind(&image_url)
     .bind(lat)
     .bind(lng)
+    .bind(&link_url)
+    .bind(&starts_at)
+    .bind(runtime_min)
     .bind(&cand_id)
     .execute(&mut *tx)
     .await?;
+    // a picture the planner uploaded and has now replaced is gone for good
+    if let Some(old) = uploaded(&old_image).filter(|_| image_url != old_image) {
+        sqlx::query("DELETE FROM candidate_images WHERE id = ?")
+            .bind(old)
+            .execute(&mut *tx)
+            .await?;
+    }
     model::changed(&mut tx, &course_id).await?;
     model::log(
         &mut tx,
@@ -694,6 +817,57 @@ async fn candidate_photos(
             .await?
     };
     Ok(Json(naver::place(&map_url).await.photos))
+}
+
+/// A picture the planner uploads for a candidate's card (a poster, a photo for a date at home):
+/// re-encoded like an album photo, kept in the database and served at /api/images/{id}.
+async fn upload_candidate_image(
+    State(st): State<AppState>,
+    Path(cand_id): Path<String>,
+    body: Bytes,
+) -> Result<Json<CourseFull>> {
+    if body.is_empty() {
+        return Err(bad("사진을 골라 줘"));
+    }
+    let old: String =
+        sqlx::query_scalar("SELECT image_url FROM candidates WHERE id = ? AND deleted_at IS NULL")
+            .bind(&cand_id)
+            .fetch_optional(&st.db)
+            .await?
+            .ok_or(AppError::NotFound("후보를 찾을 수 없어"))?;
+    let jpg = tokio::task::spawn_blocking(move || album::card_picture(&body))
+        .await
+        .map_err(|e| AppError::Internal(e.into()))??;
+    let mut tx = st.db.begin().await?;
+    let (course_id, _) = model::candidate_owner(&mut tx, &cand_id).await?;
+    let id: String =
+        sqlx::query_scalar("INSERT INTO candidate_images (bytes) VALUES (?) RETURNING id")
+            .bind(jpg)
+            .fetch_one(&mut *tx)
+            .await?;
+    sqlx::query("UPDATE candidates SET image_url = ? WHERE id = ?")
+        .bind(format!("/api/images/{id}"))
+        .bind(&cand_id)
+        .execute(&mut *tx)
+        .await?;
+    if let Some(old) = uploaded(&old) {
+        sqlx::query("DELETE FROM candidate_images WHERE id = ?")
+            .bind(old)
+            .execute(&mut *tx)
+            .await?;
+    }
+    model::changed(&mut tx, &course_id).await?;
+    model::log(
+        &mut tx,
+        &course_id,
+        "planner",
+        "candidate.image",
+        json!({ "candidate": cand_id }),
+    )
+    .await?;
+    let full = model::full(&mut tx, &course_id).await?;
+    tx.commit().await?;
+    Ok(Json(full))
 }
 
 async fn remove_candidate(

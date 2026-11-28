@@ -1442,3 +1442,135 @@ async fn site_theme_is_one_switch() {
     .await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
 }
+
+/// Planner upload of a candidate's picture: the course as JSON.
+async fn upload_picture(app: &Router, cand: &str, bytes: Vec<u8>) -> Value {
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/api/plan/candidates/{cand}/image"))
+        .header("x-planner-key", KEY)
+        .header("content-type", "image/jpeg")
+        .body(Body::from(bytes))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert!(res.status().is_success(), "upload -> {}", res.status());
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+/// A movie step: one theater for the whole step, candidates that are works with a start time
+/// and a running time, and a poster the planner uploads (served publicly, replaced for good).
+#[tokio::test]
+async fn movie_steps_hold_works_at_one_venue() {
+    let app = app(Some(KEY)).await;
+    let c = seeded(&app).await;
+    let (id, code) = (
+        c["id"].as_str().unwrap().to_string(),
+        c["share_code"].as_str().unwrap().to_string(),
+    );
+    let s1 = c["steps"][1]["id"].as_str().unwrap().to_string();
+
+    let (s, _) = call(
+        &app,
+        Method::PATCH,
+        &format!("/api/plan/steps/{s1}"),
+        Some(json!({ "kind": "opera" })),
+        Some(KEY),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "unknown icon");
+
+    // not a Naver link, so nothing is fetched: the typed name is the venue
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/steps/{s1}"),
+        Some(json!({ "kind": "movie", "venue_url": "https://example.com/theater", "venue_name": "시네마 용산" })),
+    )
+    .await;
+    assert_eq!(c["steps"][1]["kind"], "movie");
+    assert_eq!(c["steps"][1]["venue_name"], "시네마 용산");
+
+    let cand = c["steps"][1]["candidates"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let c = plan(
+        &app,
+        Method::PATCH,
+        &format!("/candidates/{cand}"),
+        Some(json!({ "starts_at": "19:20", "runtime_min": 137, "link_url": "https://example.com/movie/1" })),
+    )
+    .await;
+    let first = &c["steps"][1]["candidates"][0];
+    assert_eq!(
+        (
+            first["starts_at"].as_str(),
+            first["runtime_min"].as_i64(),
+            first["link_url"].as_str()
+        ),
+        (
+            Some("19:20"),
+            Some(137),
+            Some("https://example.com/movie/1")
+        )
+    );
+    let (s, _) = call(
+        &app,
+        Method::PATCH,
+        &format!("/api/plan/candidates/{cand}"),
+        Some(json!({ "runtime_min": 900 })),
+        Some(KEY),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+
+    // a poster: stored, public, cached for good
+    let c = upload_picture(&app, &cand, phone_photo()).await;
+    let poster = c["steps"][1]["candidates"][0]["image_url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(poster.starts_with("/api/images/"), "{poster}");
+    let (s, headers, body) = raw(&app, Method::GET, &poster, vec![], None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(headers["content-type"], "image/jpeg");
+    assert!(
+        headers["cache-control"]
+            .to_str()
+            .unwrap()
+            .contains("immutable")
+    );
+    let img = image::load_from_memory(&body).unwrap();
+    assert!(img.width().max(img.height()) <= 960);
+
+    // the link: the venue for the step, and for each work its time and the theater's map link
+    plan(
+        &app,
+        Method::PATCH,
+        &format!("/courses/{id}"),
+        Some(json!({ "status": "open" })),
+    )
+    .await;
+    let (_, v) = call(&app, Method::GET, &format!("/api/pick/{code}"), None, None).await;
+    let step = &v["open"][1];
+    assert_eq!(step["venue"]["name"], "시네마 용산");
+    let w = &step["candidates"][0];
+    assert_eq!(
+        (w["starts_at"].as_str(), w["runtime_min"].as_i64()),
+        (Some("19:20"), Some(137))
+    );
+    assert_eq!(w["venue"], "시네마 용산");
+    assert_eq!(
+        w["map_url"], "https://example.com/theater",
+        "the theater stands in for its place"
+    );
+    assert_eq!(w["image_url"], poster.as_str());
+    assert!(v["open"][0]["venue"].is_null(), "a place step has no venue");
+
+    // a new poster replaces the old one for good
+    let c = upload_picture(&app, &cand, phone_photo()).await;
+    assert_ne!(c["steps"][1]["candidates"][0]["image_url"], poster.as_str());
+    let (s, _, _) = raw(&app, Method::GET, &poster, vec![], None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}

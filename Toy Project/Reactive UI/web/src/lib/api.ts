@@ -1,6 +1,22 @@
 /** Typed client for the Rust API (same origin in production, proxied in dev). */
 
-export type Kind = "meal" | "cafe" | "play" | "dinner" | "drink" | "walk";
+/** Step icons; keep in step with `KINDS` in `server/src/validate.rs`. */
+export type Kind =
+  | "meal"
+  | "cafe"
+  | "dinner"
+  | "drink"
+  | "walk"
+  | "play"
+  | "shop"
+  | "photo"
+  | "drive"
+  | "arcade"
+  | "stay"
+  | "movie"
+  | "show"
+  | "exhibit"
+  | "home";
 export type GameId =
   | "worldcup"
   | "swipe"
@@ -19,9 +35,16 @@ export interface Place {
   map_url: string;
   /** "" when the card has no photo */
   image_url: string;
-  /** from the Naver Map link; null when unknown */
+  /** from the Naver Map link (or a work's theater); null when unknown */
   lat: number | null;
   lng: number | null;
+  /** a work's info or booking page */
+  link_url: string;
+  /** a work's start time, "19:20" or "" */
+  starts_at: string;
+  runtime_min: number | null;
+  /** a work's theater */
+  venue: string | null;
 }
 
 export interface StepSummary {
@@ -42,6 +65,8 @@ export interface OpenStep {
   time: string;
   game: GameId;
   rerolls_left: number;
+  /** a movie, show or exhibition step's theater */
+  venue: { name: string; map_url: string } | null;
   candidates: Place[];
 }
 
@@ -67,6 +92,9 @@ export interface Candidate {
   image_url: string;
   lat: number | null;
   lng: number | null;
+  link_url: string;
+  starts_at: string;
+  runtime_min: number | null;
 }
 
 /** A photo the planner can choose for a candidate (from its Naver Map link). */
@@ -89,6 +117,11 @@ export interface Step {
   picked_at: string | null;
   /** picker: chosen in a game · planner: a single candidate, so fixed ("정해 둠") */
   picked_by: "picker" | "planner" | null;
+  /** a movie, show or exhibition step's theater (one for every candidate) */
+  venue_name: string;
+  venue_url: string;
+  venue_lat: number | null;
+  venue_lng: number | null;
   candidates: Candidate[];
 }
 
@@ -202,9 +235,14 @@ export interface BackupStatus {
 }
 
 export type StepInput = Partial<
-  Pick<Step, "kind" | "label" | "title" | "time" | "game" | "rerolls">
+  Pick<Step, "kind" | "label" | "title" | "time" | "game" | "rerolls" | "venue_url" | "venue_name">
 >;
-export type CandidateInput = Partial<Pick<Candidate, "name" | "memo" | "map_url" | "image_url">>;
+/** runtime_min: 0 clears it */
+export type CandidateInput = Partial<
+  Pick<Candidate, "name" | "memo" | "map_url" | "image_url" | "link_url" | "starts_at"> & {
+    runtime_min: number;
+  }
+>;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -362,6 +400,9 @@ export function planApi(key: string) {
       r<CourseFull>("PATCH", `/candidates/${id}`, body),
     removeCandidate: (id: string) => r<CourseFull>("DELETE", `/candidates/${id}`),
     photos: (id: string) => r<PhotoOption[]>("GET", `/candidates/${id}/photos`),
+    /** a poster or picture for the card, already shrunk by the browser */
+    uploadImage: (id: string, photo: Blob) =>
+      request<CourseFull>("POST", `/plan/candidates/${id}/image`, { blob: photo, key }),
     guard: () => r<ArchiveGuard>("GET", "/archive"),
     backup: () => r<BackupStatus>("GET", "/backup"),
     wishes: () => r<PlannerWish[]>("GET", "/wishes"),
